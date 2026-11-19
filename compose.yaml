@@ -35,8 +35,11 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       BETTER_AUTH_TRUSTED_ORIGINS: ${BETTER_AUTH_TRUSTED_ORIGINS:-http://127.0.0.1:3000}
       CLIP_STORAGE_DIR: /app/clips
+      IP_CAMERA_ENDPOINTS: ${IP_CAMERA_ENDPOINTS:-}
+      RECORDING_STORAGE_DIR: /app/recordings
     volumes:
       - camera-clips:/app/clips
+      - camera-recordings:/app/recordings
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -51,3 +54,4 @@ services:
 volumes:
   postgres-data:
   camera-clips:
+  camera-recordings:

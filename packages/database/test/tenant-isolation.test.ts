@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { sql } from 'drizzle-orm';
 import { migrateDatabase } from '../dist/migrate.js';
-import { cameraZones, createDatabase, operationalEvents } from '../dist/index.js';
+import { cameraRecordings, cameraZones, createDatabase, operationalEvents } from '../dist/index.js';
 
 test('PostgreSQL isolates operational events under the application role', async (t) => {
   await migrateDatabase();
@@ -97,4 +97,31 @@ test('camera zones persist in their camera and tenant context', async (t) => {
   assert.equal(await database.zones.remove(tenant, cameraId, saved.id), true);
   assert.equal(await database.zones.remove(tenant, cameraId, saved.id), false);
   assert.deepEqual(await database.zones.list(tenant, cameraId), [second]);
+});
+
+test('IP camera recordings are private to their camera and tenant', async (t) => {
+  await migrateDatabase();
+
+  const database = createDatabase({ max: 1 });
+  t.after(() => database.close());
+
+  const tenant = randomUUID();
+  const otherTenant = randomUUID();
+  const cameraId = randomUUID();
+  const siblingId = randomUUID();
+  const camera = { name: 'Warehouse', encryptedStream: 'opaque camera configuration' };
+  await database.cameras.addIp(tenant, { ...camera, id: cameraId });
+  await database.cameras.addIp(tenant, { ...camera, id: siblingId });
+
+  const segment = { id: randomUUID(), startedAt: new Date(0), endedAt: new Date(5000) };
+  await database.recordings.add(tenant, { ...segment, cameraId });
+
+  assert.deepEqual(await database.recordings.list(tenant, cameraId), [segment]);
+  assert.equal(await database.recordings.find(otherTenant, cameraId, segment.id), undefined);
+  assert.equal(await database.recordings.find(tenant, siblingId, segment.id), undefined);
+  assert.deepEqual(await database.forTenant(otherTenant, (tx) => tx.select().from(cameraRecordings)), []);
+  assert.equal(await database.cameras.removeIp(otherTenant, cameraId), false);
+  assert.equal(await database.cameras.removeIp(tenant, cameraId), true);
+  assert.equal(await database.cameras.find(tenant, cameraId), undefined);
+  assert.deepEqual(await database.recordings.list(tenant, cameraId), [segment]);
 });

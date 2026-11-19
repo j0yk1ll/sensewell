@@ -15,7 +15,7 @@ curl --fail http://localhost:3000/api/health
 # {"status":"ready"}
 ```
 
-Compose starts PostgreSQL, applies the Drizzle migrations, then starts the app. The migration job exits successfully after applying pending migrations. PostgreSQL data and uploaded clips persist in the `postgres-data` and `camera-clips` volumes. Use `docker compose down` to stop the stack. Add any new runtime dependencies to `compose.yaml` as part of the slice that introduces them.
+Compose starts PostgreSQL, applies the Drizzle migrations, then starts the app. The migration job exits successfully after applying pending migrations. PostgreSQL data, uploaded clips, and IP camera recordings persist in the `postgres-data`, `camera-clips`, and `camera-recordings` volumes. Use `docker compose down` to stop the stack. Add any new runtime dependencies to `compose.yaml` as part of the slice that introduces them.
 
 ## Add and replay a Synthetic Camera
 
@@ -27,6 +27,16 @@ Compose starts PostgreSQL, applies the Drizzle migrations, then starts the app. 
 FFmpeg decodes up to 10 replay frames per second at 1× source speed. Each pass has a persistent ID tied to the source camera. Active playback runs in the app process and stops when that process exits.
 
 The Compose secret and origins are for local use. Set `BETTER_AUTH_SECRET` to a random secret (at least 32 characters) and `BETTER_AUTH_URL` to the browser-facing HTTPS URL for a deployment.
+
+## Connect and record an IP camera
+
+1. Set `IP_CAMERA_ENDPOINTS` to the trusted camera endpoints reachable from the app container. This checks the address submitted during setup. FFmpeg can follow redirects supplied by the approved camera, so any network-level destination restrictions must be enforced by the deployment. Use comma-separated host and port pairs, such as `192.0.2.10:554`, in the Compose environment or `.env`. Recreate the app after changing the setting.
+2. Sign in and select **IP camera** under **Camera source**. Enter a name, the `rtsp://` stream URL, and any credentials in the separate fields. Choose **Connect IP camera**.
+3. Capture starts automatically. When the feed is interrupted the workspace reports it as unavailable and retries in the background. Capture also resumes after an app restart. Keep `BETTER_AUTH_SECRET` stable across restarts so saved camera settings can be decrypted.
+4. Open a time range in **Recorded footage**. Completed MP4 segments become playable as they are recorded. The timeline shows outages between segments as **Footage unavailable**, and playback stops at a gap.
+5. Choose **Remove camera** and confirm to stop capture and remove the camera from the workspace.
+
+The initial input is RTSP over TCP. The app records video as browser-playable H.264 using the existing FFmpeg runtime. For a local run outside Compose, set `RECORDING_STORAGE_DIR` to choose a private storage directory. The default is `.sensewell-recordings` in the API working directory.
 
 ## Work on the apps
 

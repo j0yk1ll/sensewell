@@ -29,6 +29,13 @@
       "when": 1795117725679,
       "tag": "0003_camera_zone_management",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795119386573,
+      "tag": "0004_ip_cameras",
+      "breakpoints": true
     }
   ]
 }

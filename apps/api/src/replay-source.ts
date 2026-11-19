@@ -13,7 +13,15 @@ export interface ReplayFrame {
   jpeg: Buffer;
 }
 
-async function* jpegFrames(stream: Readable) {
+export function jpegPart(jpeg: Buffer) {
+  return Buffer.concat([
+    Buffer.from(`--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${jpeg.length}\r\n\r\n`),
+    jpeg,
+    Buffer.from('\r\n'),
+  ]);
+}
+
+export async function* jpegFrames(stream: Readable) {
   let buffer = Buffer.alloc(0);
   for await (const chunk of stream) {
     buffer = Buffer.concat([buffer, chunk]);

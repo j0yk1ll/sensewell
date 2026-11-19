@@ -4,3 +4,4 @@ dist/
 .env
 .env.*
 .sensewell-clips/
+.sensewell-recordings/

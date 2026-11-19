@@ -1,10 +1,10 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { requireEnv } from './require-env.js';
-import { cameraZones, operationalEvents, replayPasses, syntheticCameras } from './schema.js';
+import { authUser, cameraRecordings, cameras, cameraZones, operationalEvents, replayPasses } from './schema.js';
 
-export { cameraZones, operationalEvents, replayPasses, syntheticCameras } from './schema.js';
+export { cameraRecordings, cameras, cameraZones, operationalEvents, replayPasses } from './schema.js';
 
 type TenantTransaction = Parameters<Parameters<ReturnType<typeof drizzle>['transaction']>[0]>[0];
 type ZoneInput = Pick<typeof cameraZones.$inferInsert, 'name' | 'points'>;
@@ -31,10 +31,18 @@ export function createDatabase({ max }: { max?: number } = {}) {
   }
 
   const cameraFields = {
-    id: syntheticCameras.id,
-    name: syntheticCameras.name,
-    durationMs: syntheticCameras.durationMs,
+    id: cameras.id,
+    name: cameras.name,
+    durationMs: cameras.durationMs,
   };
+  const recordingFields = {
+    id: cameraRecordings.id,
+    startedAt: cameraRecordings.startedAt,
+    endedAt: cameraRecordings.endedAt,
+  };
+  const cameraScope = (tenantId: string, id: string) => and(eq(cameras.tenantId, tenantId), eq(cameras.id, id));
+  const recordingScope = (tenantId: string, cameraId: string) =>
+    and(eq(cameraRecordings.tenantId, tenantId), eq(cameraRecordings.cameraId, cameraId));
   const zoneFields = {
     id: cameraZones.id,
     name: cameraZones.name,
@@ -49,22 +57,54 @@ export function createDatabase({ max }: { max?: number } = {}) {
     forTenant,
     cameras: {
       list(tenantId: string) {
-        return forTenant(tenantId, (tx) => tx.select(cameraFields).from(syntheticCameras)
-          .where(eq(syntheticCameras.tenantId, tenantId))
-          .orderBy(asc(syntheticCameras.createdAt), asc(syntheticCameras.id)));
+        return forTenant(tenantId, (tx) => tx.select(cameraFields).from(cameras)
+          .where(and(eq(cameras.tenantId, tenantId), isNull(cameras.removedAt)))
+          .orderBy(asc(cameras.createdAt), asc(cameras.id)));
       },
       async find(tenantId: string, id: string) {
         const [camera] = await forTenant(tenantId, (tx) => tx.select({
-          ...cameraFields, startOffsetMs: syntheticCameras.startOffsetMs,
-        }).from(syntheticCameras)
-          .where(and(eq(syntheticCameras.tenantId, tenantId), eq(syntheticCameras.id, id))));
+          ...cameraFields, startOffsetMs: cameras.startOffsetMs,
+        }).from(cameras)
+          .where(and(cameraScope(tenantId, id), isNull(cameras.removedAt))));
         return camera;
       },
-      async add(tenantId: string, camera: Pick<typeof syntheticCameras.$inferInsert, 'id' | 'name' | 'durationMs' | 'startOffsetMs'>) {
-        await forTenant(tenantId, (tx) => tx.insert(syntheticCameras).values({ ...camera, tenantId }));
+      async add(tenantId: string, camera: Pick<typeof cameras.$inferInsert, 'id' | 'name' | 'durationMs' | 'startOffsetMs'>) {
+        await forTenant(tenantId, (tx) => tx.insert(cameras).values({ ...camera, tenantId }));
       },
       async recordPass(tenantId: string, pass: { cameraId: string; id: string }) {
         await forTenant(tenantId, (tx) => tx.insert(replayPasses).values({ ...pass, tenantId }));
+      },
+      async addIp(tenantId: string, camera: { id: string; name: string; encryptedStream: string }) {
+        await forTenant(tenantId, (tx) => tx.insert(cameras).values({ ...camera, tenantId }));
+      },
+      async removeIp(tenantId: string, id: string) {
+        const [removed] = await forTenant(tenantId, (tx) => tx.update(cameras)
+          .set({ removedAt: new Date(), encryptedStream: null })
+          .where(and(cameraScope(tenantId, id), isNotNull(cameras.encryptedStream))).returning({ id: cameras.id }));
+        return Boolean(removed);
+      },
+      async *captureSources() {
+        const tenants = await database.select({ id: authUser.id }).from(authUser);
+        for (const { id: tenantId } of tenants) {
+          const sources = await forTenant(tenantId, (tx) => tx.select({
+            id: cameras.id, encryptedStream: cameras.encryptedStream,
+          }).from(cameras).where(and(eq(cameras.tenantId, tenantId), isNotNull(cameras.encryptedStream))));
+          for (const source of sources) yield { ...source, tenantId };
+        }
+      },
+    },
+    recordings: {
+      list(tenantId: string, cameraId: string) {
+        return forTenant(tenantId, (tx) => tx.select(recordingFields).from(cameraRecordings)
+          .where(recordingScope(tenantId, cameraId)).orderBy(asc(cameraRecordings.startedAt)));
+      },
+      async find(tenantId: string, cameraId: string, id: string) {
+        const [recording] = await forTenant(tenantId, (tx) => tx.select({ id: cameraRecordings.id }).from(cameraRecordings)
+          .where(and(recordingScope(tenantId, cameraId), eq(cameraRecordings.id, id))));
+        return recording;
+      },
+      async add(tenantId: string, recording: Pick<typeof cameraRecordings.$inferInsert, 'id' | 'cameraId' | 'startedAt' | 'endedAt'>) {
+        await forTenant(tenantId, (tx) => tx.insert(cameraRecordings).values({ ...recording, tenantId }));
       },
     },
     zones: {

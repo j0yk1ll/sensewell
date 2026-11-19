@@ -16,7 +16,7 @@ export function ZoneEditor({ id, tenantId, sourceSize, children, timeline }: {
   tenantId: string;
   sourceSize?: { width: number; height: number };
   children: ReactNode;
-  timeline: ReactNode;
+  timeline?: ReactNode;
 }) {
   const footage = useRef<HTMLDivElement>(null);
   const drawingArea = useRef<HTMLDivElement>(null);

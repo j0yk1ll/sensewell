@@ -22,6 +22,28 @@ export const syntheticCamera = z.object({
 export const syntheticCameraList = z.array(syntheticCamera);
 export type SyntheticCamera = z.infer<typeof syntheticCamera>;
 
+export const ipCameraInput = z.object({
+  name: cameraName,
+  url: z.string().trim().min(1).max(2048),
+  username: z.string().max(256).default(''),
+  password: z.string().max(256).default(''),
+});
+export type IpCameraInput = z.infer<typeof ipCameraInput>;
+
+export const ipCamera = syntheticCamera.pick({ id: true, name: true }).extend({ kind: z.literal('ip') });
+export const cameraList = z.array(z.union([syntheticCamera, ipCamera]));
+export type Camera = z.infer<typeof cameraList>[number];
+export type IpCamera = z.infer<typeof ipCamera>;
+
+export const captureStatus = z.object({ state: z.enum(['connecting', 'connected', 'unavailable']) });
+export type CaptureStatus = z.infer<typeof captureStatus>;
+
+export const recordingList = z.array(z.object({
+  id: z.uuid(),
+  startedAt: z.iso.datetime(),
+  endedAt: z.iso.datetime(),
+}));
+
 export const replayOptions = z.object({ loop: z.boolean() });
 export const replayStatus = z.discriminatedUnion('state', [
   z.object({ state: z.enum(['idle', 'starting', 'stopping', 'finished', 'unavailable']) }),

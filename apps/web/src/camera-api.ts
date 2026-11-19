@@ -1,4 +1,4 @@
-import { cameraZone, cameraZoneList, replayStatus, syntheticCamera, syntheticCameraList, type CameraZoneInput } from '@sensewell/contracts';
+import { cameraList, cameraZone, cameraZoneList, captureStatus, ipCamera, recordingList, replayStatus, syntheticCamera, type CameraZoneInput, type IpCameraInput } from '@sensewell/contracts';
 
 export class CameraApiError extends Error {
   constructor(readonly status: number, message: string) {
@@ -31,7 +31,7 @@ const zonePath = (id: string, zoneId: string) => `${cameraPath(id)}/zones/${zone
 
 export const cameraApi = {
   list(signal: AbortSignal) {
-    return request('/api/cameras', syntheticCameraList, 'Could not load cameras.', { signal });
+    return request('/api/cameras', cameraList, 'Could not load cameras.', { signal });
   },
   add(name: string, clip: File) {
     return request(`/api/cameras?${new URLSearchParams({ name })}`, syntheticCamera,
@@ -41,6 +41,22 @@ export const cameraApi = {
         body: clip,
       });
   },
+  connect(input: IpCameraInput) {
+    return request('/api/cameras/ip', ipCamera, 'Could not connect the camera. Try again.', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+    });
+  },
+  async remove(id: string) {
+    await checkedRequest(cameraPath(id), 'Could not remove the camera. Try again.', { method: 'DELETE' });
+  },
+  capture(id: string, signal: AbortSignal) {
+    return request(`${cameraPath(id)}/capture`, captureStatus, 'Could not load capture status.', { signal });
+  },
+  liveVideo: (id: string) => `${cameraPath(id)}/capture/video`,
+  recordings(id: string, signal: AbortSignal) {
+    return request(`${cameraPath(id)}/recordings`, recordingList, 'Could not load recordings.', { signal });
+  },
+  recording: (id: string, recordingId: string) => `${cameraPath(id)}/recordings/${recordingId}`,
   media: (id: string) => `${cameraPath(id)}/media`,
   zones(id: string, signal: AbortSignal) {
     return request(`${cameraPath(id)}/zones`, cameraZoneList, 'Could not load camera zones.', { signal });

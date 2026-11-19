@@ -10,6 +10,7 @@ import { DatabaseService } from './database.service.js';
 import { AuthController, AuthService } from './auth.js';
 import { CamerasController } from './cameras.controller.js';
 import { ClipStorage } from './clip-storage.js';
+import { IpCameraService } from './ip-camera.service.js';
 import { ReplayService } from './replay.service.js';
 
 @Controller('api')
@@ -32,6 +33,6 @@ class HealthController {
 
 @Module({
   controllers: [HealthController, AuthController, CamerasController],
-  providers: [DatabaseService, AuthService, ClipStorage, ReplayService],
+  providers: [DatabaseService, AuthService, ClipStorage, ReplayService, IpCameraService],
 })
 export class AppModule {}

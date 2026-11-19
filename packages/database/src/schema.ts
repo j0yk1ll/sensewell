@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, foreignKey, index, integer, jsonb, pgPolicy, pgRole, pgTable, text, timestamp, unique, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { boolean, check, foreignKey, index, integer, jsonb, pgPolicy, pgRole, pgTable, text, timestamp, unique, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 const applicationRole = pgRole('sensewell_app').existing();
 
@@ -69,16 +69,29 @@ export const authVerification = pgTable('verification', {
   updatedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
 }, (verification) => [index().on(verification.identifier)]);
 
-export const syntheticCameras = pgTable('synthetic_cameras', {
+export const cameras = pgTable('cameras', {
   id: uuid().primaryKey(),
   tenantId: uuid('tenant_id').notNull(),
   name: text().notNull(),
-  durationMs: integer('duration_ms').notNull(),
-  startOffsetMs: integer('start_offset_ms').notNull(),
+  durationMs: integer('duration_ms'),
+  startOffsetMs: integer('start_offset_ms'),
+  encryptedStream: text('encrypted_stream'),
+  removedAt: timestamp('removed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (camera) => [
   tenantIsolation(camera.tenantId),
-  unique().on(camera.tenantId, camera.id),
+  pgPolicy('ip_camera_removal', {
+    as: 'restrictive', for: 'update', to: applicationRole,
+    using: sql`${camera.encryptedStream} is not null`,
+    withCheck: sql`${camera.removedAt} is not null and ${camera.encryptedStream} is null`,
+  }),
+  unique('synthetic_cameras_tenant_id_id_unique').on(camera.tenantId, camera.id),
+  check('camera_source', sql`
+    (${camera.encryptedStream} is null and ${camera.removedAt} is null
+      and ${camera.durationMs} is not null and ${camera.startOffsetMs} is not null)
+    or ((${camera.encryptedStream} is not null) <> (${camera.removedAt} is not null)
+      and ${camera.durationMs} is null and ${camera.startOffsetMs} is null)
+  `),
 ]).enableRLS();
 
 export const cameraZones = pgTable('camera_zones', {
@@ -93,7 +106,7 @@ export const cameraZones = pgTable('camera_zones', {
   foreignKey({
     name: 'camera_zones_camera_fk',
     columns: [zone.tenantId, zone.cameraId],
-    foreignColumns: [syntheticCameras.tenantId, syntheticCameras.id],
+    foreignColumns: [cameras.tenantId, cameras.id],
   }).onDelete('cascade'),
   index().on(zone.tenantId, zone.cameraId),
 ]).enableRLS();
@@ -106,8 +119,25 @@ export const replayPasses = pgTable('replay_passes', {
 }, (pass) => [
   tenantIsolation(pass.tenantId),
   foreignKey({
+    name: 'replay_passes_tenant_id_camera_id_synthetic_cameras_tenant_id_id_fk',
     columns: [pass.tenantId, pass.cameraId],
-    foreignColumns: [syntheticCameras.tenantId, syntheticCameras.id],
+    foreignColumns: [cameras.tenantId, cameras.id],
   }),
   index().on(pass.tenantId, pass.cameraId),
+]).enableRLS();
+
+export const cameraRecordings = pgTable('camera_recordings', {
+  id: uuid().primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  cameraId: uuid('camera_id').notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+  endedAt: timestamp('ended_at', { withTimezone: true }).notNull(),
+}, (recording) => [
+  tenantIsolation(recording.tenantId),
+  foreignKey({
+    name: 'camera_recordings_camera_fk',
+    columns: [recording.tenantId, recording.cameraId],
+    foreignColumns: [cameras.tenantId, cameras.id],
+  }).onDelete('cascade'),
+  index().on(recording.tenantId, recording.cameraId, recording.startedAt),
 ]).enableRLS();

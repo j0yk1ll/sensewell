@@ -15,7 +15,7 @@ RUN pnpm build && pnpm --filter @sensewell/api deploy --legacy --prod /runtime
 FROM docker.io/library/node:24-alpine
 WORKDIR /app
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 STATIC_ROOT=/app/web
-RUN apk add --no-cache ffmpeg && mkdir /app/clips && chown node:node /app/clips
+RUN apk add --no-cache ffmpeg && mkdir /app/clips /app/recordings && chown node:node /app/clips /app/recordings
 COPY --from=build /runtime ./
 COPY --from=build /workspace/apps/web/dist ./web
 USER node

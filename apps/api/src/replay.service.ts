@@ -4,7 +4,7 @@ import { Injectable, Logger, ServiceUnavailableException, type OnModuleDestroy }
 import type { ReplayStatus, SyntheticCamera } from '@sensewell/contracts';
 import { ClipStorage } from './clip-storage.js';
 import { DatabaseService } from './database.service.js';
-import { replayFrames, type ReplayFrame } from './replay-source.js';
+import { jpegPart, replayFrames, type ReplayFrame } from './replay-source.js';
 
 interface ReplayView {
   status: ReplayStatus;
@@ -17,14 +17,6 @@ interface Replay extends ReplayView {
 }
 
 type ReplayCamera = SyntheticCamera & { startOffsetMs: number };
-
-function framePart(frame: ReplayFrame) {
-  return Buffer.concat([
-    Buffer.from(`--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${frame.jpeg.length}\r\n\r\n`),
-    frame.jpeg,
-    Buffer.from('\r\n'),
-  ]);
-}
 
 @Injectable()
 export class ReplayService implements OnModuleDestroy {
@@ -70,12 +62,12 @@ export class ReplayService implements OnModuleDestroy {
       const frame = replay.frame;
       if (frame && frame !== previous) {
         previous = frame;
-        yield framePart(frame);
+        yield jpegPart(frame.jpeg);
       }
       await setTimeout(50, undefined, { signal }).catch(() => undefined);
     }
     const last = this.completed.get(cameraId)?.frame;
-    if (!signal.aborted && last && last !== previous) yield framePart(last);
+    if (!signal.aborted && last && last !== previous) yield jpegPart(last.jpeg);
     if (!signal.aborted) yield Buffer.from('--frame--\r\n');
   }
 
