@@ -1,5 +1,9 @@
 import { createAuthClient } from 'better-auth/react';
 import { useState, type FormEvent } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export const authClient = createAuthClient();
 
@@ -27,26 +31,33 @@ export function SignIn() {
   }
 
   return (
-    <section className="panel mx-auto w-full max-w-md p-6 sm:p-8" aria-labelledby="operator-title">
+    <Card className="mx-auto w-full max-w-md gap-0 p-6 sm:p-8" role="region" aria-labelledby="operator-title">
       <h2 id="operator-title" className="text-2xl font-semibold tracking-tight">
         {creating ? 'Create an operator account' : 'Sign in to your workspace'}
       </h2>
       <form onSubmit={submit} className="mt-6 grid gap-4">
-        {creating && <label className="field">Name<input name="name" autoComplete="name" required maxLength={100} /></label>}
-        <label className="field">Email<input type="email" name="email" autoComplete="email" required /></label>
-        <label className="field">Password<input
-          type="password" name="password" required maxLength={128} minLength={creating ? 8 : undefined}
-          autoComplete={creating ? 'new-password' : 'current-password'}
-        /></label>
+        {creating && <div className="field">
+          <Label htmlFor="operator-name">Name</Label>
+          <Input id="operator-name" name="name" autoComplete="name" required maxLength={100} />
+        </div>}
+        <div className="field">
+          <Label htmlFor="operator-email">Email</Label>
+          <Input id="operator-email" type="email" name="email" autoComplete="email" required />
+        </div>
+        <div className="field">
+          <Label htmlFor="operator-password">Password</Label>
+          <Input id="operator-password" type="password" name="password" required maxLength={128}
+            minLength={creating ? 8 : undefined} autoComplete={creating ? 'new-password' : 'current-password'} />
+        </div>
         {error && <p className="error" role="alert">{error}</p>}
-        <button className="button primary" disabled={pending}>
+        <Button type="submit" disabled={pending}>
           {pending ? 'Please wait…' : creating ? 'Create account' : 'Sign in'}
-        </button>
+        </Button>
       </form>
-      <button className="mt-5 text-sm font-semibold text-teal-800 underline underline-offset-4" type="button" disabled={pending}
+      <Button variant="link" className="mt-3 self-start px-0" type="button" disabled={pending}
         onClick={() => { setCreating(!creating); setError(''); }}>
         {creating ? 'Back to sign in' : 'Create an account'}
-      </button>
-    </section>
+      </Button>
+    </Card>
   );
 }

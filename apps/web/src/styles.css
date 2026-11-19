@@ -1,35 +1,55 @@
 @import "tailwindcss";
 
-body {
-  @apply min-h-screen bg-slate-100 text-slate-950 antialiased;
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 }
 
-.panel {
-  @apply rounded-xl border border-slate-200 bg-white shadow-xs;
+:root {
+  --background: var(--color-white);
+  --foreground: var(--color-slate-950);
+  --card: var(--background);
+  --card-foreground: var(--foreground);
+  --primary: var(--color-teal-800);
+  --primary-foreground: var(--color-white);
+  --secondary: var(--color-slate-100);
+  --secondary-foreground: var(--color-slate-700);
+  --muted: var(--color-slate-200);
+  --muted-foreground: var(--color-slate-600);
+  --accent: var(--color-teal-50);
+  --accent-foreground: var(--color-teal-900);
+  --destructive: var(--color-red-800);
+  --border: var(--color-slate-200);
+  --input: var(--color-slate-300);
+  --ring: var(--color-teal-700);
 }
 
-.button {
-  @apply inline-flex min-h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50;
-}
+@layer base {
+  * {
+    @apply border-border;
+  }
 
-.button.primary {
-  @apply border-teal-800 bg-teal-800 text-white enabled:hover:bg-teal-900;
-}
-
-:where(button, input, video):focus-visible {
-  @apply outline-2 outline-offset-2 outline-teal-700;
+  body {
+    @apply min-h-screen bg-slate-100 text-foreground antialiased;
+  }
 }
 
 .field {
-  @apply grid min-w-0 gap-1.5 text-sm font-semibold text-slate-800;
-}
-
-.field input {
-  @apply min-w-0 rounded-md border border-slate-300 bg-white px-3 py-2 font-normal text-slate-950;
-}
-
-.field input::file-selector-button {
-  @apply mr-2 rounded-sm bg-slate-100 px-2 py-0.5 font-medium text-slate-900;
+  @apply grid min-w-0 gap-2;
 }
 
 .error {
@@ -46,4 +66,16 @@ body {
 
 .footage-message {
   @apply absolute inset-x-2 text-center text-sm text-white;
+}
+
+.camera-viewer:fullscreen {
+  @apply grid grid-rows-[auto_minmax(0,1fr)_auto] overflow-y-auto rounded-none;
+}
+
+.camera-viewer:fullscreen .footage-with-timeline {
+  @apply grid-rows-[minmax(0,1fr)_auto];
+}
+
+.camera-viewer:fullscreen .footage {
+  @apply aspect-auto h-full;
 }

@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { createRoot } from 'react-dom/client';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { CameraWorkspace } from './camera-workspace';
 import { authClient, SignIn } from './operator-auth';
 import { fetchHealth } from './health';
@@ -38,10 +40,10 @@ function App() {
       </header>
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-8 sm:py-12">
         {session.isPending ? <p role="status">Checking your session…</p>
-          : session.error ? <div className="panel grid justify-items-start gap-3 p-5">
+          : session.error ? <Card className="grid justify-items-start gap-3 p-5">
             <p className="error" role="alert">Could not check your session.</p>
-            <button className="button" type="button" onClick={() => void session.refetch()}>Retry</button>
-          </div>
+            <Button variant="outline" type="button" onClick={() => void session.refetch()}>Retry</Button>
+          </Card>
           : session.data ? <CameraWorkspace key={session.data.user.id} operator={session.data.user} />
           : <SignIn />}
       </main>
