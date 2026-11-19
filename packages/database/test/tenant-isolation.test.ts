@@ -78,4 +78,23 @@ test('camera zones persist in their camera and tenant context', async (t) => {
     (error: unknown) =>
       error instanceof Error && (error.cause as { code?: string } | undefined)?.code === '23503',
   );
+
+  const second = await database.zones.add(tenant, cameraId, { ...input, name: 'Loading bay' });
+  const edits = {
+    name: 'Main aisle',
+    points: [{ x: 0.2, y: 0.2 }, { x: 0.8, y: 0.3 }, { x: 0.6, y: 0.8 }],
+  };
+  const updated = { id: saved.id, ...edits };
+  assert.equal(await database.zones.update(tenant, siblingId, saved.id, edits), undefined);
+  assert.equal(await database.zones.update(otherTenant, cameraId, saved.id, edits), undefined);
+  assert.deepEqual(await database.zones.update(tenant, cameraId, saved.id, edits), updated);
+  assert.deepEqual(
+    new Map((await database.zones.list(tenant, cameraId)).map((zone) => [zone.id, zone])),
+    new Map([[updated.id, updated], [second.id, second]]),
+  );
+  assert.equal(await database.zones.remove(tenant, siblingId, saved.id), false);
+  assert.equal(await database.zones.remove(otherTenant, cameraId, saved.id), false);
+  assert.equal(await database.zones.remove(tenant, cameraId, saved.id), true);
+  assert.equal(await database.zones.remove(tenant, cameraId, saved.id), false);
+  assert.deepEqual(await database.zones.list(tenant, cameraId), [second]);
 });

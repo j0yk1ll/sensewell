@@ -7,6 +7,11 @@ import { cameraZones, operationalEvents, replayPasses, syntheticCameras } from '
 export { cameraZones, operationalEvents, replayPasses, syntheticCameras } from './schema.js';
 
 type TenantTransaction = Parameters<Parameters<ReturnType<typeof drizzle>['transaction']>[0]>[0];
+type ZoneInput = Pick<typeof cameraZones.$inferInsert, 'name' | 'points'>;
+
+function zoneCamera(tenantId: string, cameraId: string) {
+  return and(eq(cameraZones.tenantId, tenantId), eq(cameraZones.cameraId, cameraId));
+}
 
 export function createDatabase({ max }: { max?: number } = {}) {
   const pool = new Pool({
@@ -65,14 +70,24 @@ export function createDatabase({ max }: { max?: number } = {}) {
     zones: {
       list(tenantId: string, cameraId: string) {
         return forTenant(tenantId, (tx) => tx.select(zoneFields).from(cameraZones)
-          .where(and(eq(cameraZones.tenantId, tenantId), eq(cameraZones.cameraId, cameraId)))
+          .where(zoneCamera(tenantId, cameraId))
           .orderBy(asc(cameraZones.createdAt), asc(cameraZones.id)));
       },
-      async add(tenantId: string, cameraId: string, zone: Pick<typeof cameraZones.$inferInsert, 'name' | 'points'>) {
+      async add(tenantId: string, cameraId: string, zone: ZoneInput) {
         const [saved] = await forTenant(tenantId, (tx) => tx.insert(cameraZones)
           .values({ ...zone, tenantId, cameraId }).returning(zoneFields));
         if (!saved) throw new Error('Zone insert returned no row.');
         return saved;
+      },
+      async update(tenantId: string, cameraId: string, id: string, zone: ZoneInput) {
+        const [saved] = await forTenant(tenantId, (tx) => tx.update(cameraZones).set(zone)
+          .where(and(zoneCamera(tenantId, cameraId), eq(cameraZones.id, id))).returning(zoneFields));
+        return saved;
+      },
+      async remove(tenantId: string, cameraId: string, id: string) {
+        const [removed] = await forTenant(tenantId, (tx) => tx.delete(cameraZones)
+          .where(and(zoneCamera(tenantId, cameraId), eq(cameraZones.id, id))).returning({ id: cameraZones.id }));
+        return Boolean(removed);
       },
     },
     close() {

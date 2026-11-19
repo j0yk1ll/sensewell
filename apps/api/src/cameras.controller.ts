@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import {
   BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, NotFoundException,
-  Param, ParseUUIDPipe, PayloadTooLargeException, Post, Query, Req, Res,
+  Param, ParseUUIDPipe, PayloadTooLargeException, Post, Put, Query, Req, Res,
   ServiceUnavailableException, UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import { cameraName, cameraZoneInput, maxCameraNameLength, maxClipBytes, maxClipMiB, replayOptions } from '@sensewell/contracts';
@@ -27,6 +27,14 @@ function byteRange(header: string, size: number) {
   const start = first ? Number(first) : Math.max(0, size - Number(last));
   const end = first && last ? Math.min(Number(last), size - 1) : size - 1;
   if (start <= end) return { start, end };
+}
+
+function parseZone(body: unknown) {
+  const zone = cameraZoneInput.safeParse(body);
+  if (!zone.success) {
+    throw new BadRequestException('Enter a zone name and draw a valid outline within the camera image.');
+  }
+  return zone.data;
 }
 
 @Controller('api/cameras')
@@ -84,11 +92,35 @@ export class CamerasController {
     @Body() body: unknown,
   ) {
     const { camera, tenantId } = await this.requireCamera(request, id);
-    const zone = cameraZoneInput.safeParse(body);
-    if (!zone.success) {
-      throw new BadRequestException('Enter a zone name and draw a valid outline within the camera image.');
+    return this.database.zones.add(tenantId, camera.id, parseZone(body));
+  }
+
+  @Put(':id/zones/:zoneId')
+  @Header('Cache-Control', 'private, no-store')
+  async updateZone(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('zoneId', ParseUUIDPipe) zoneId: string,
+    @Req() request: FastifyRequest,
+    @Body() body: unknown,
+  ) {
+    const { camera, tenantId } = await this.requireCamera(request, id);
+    const zone = await this.database.zones.update(tenantId, camera.id, zoneId, parseZone(body));
+    if (!zone) throw new NotFoundException('Camera zone not found.');
+    return zone;
+  }
+
+  @Delete(':id/zones/:zoneId')
+  @HttpCode(204)
+  @Header('Cache-Control', 'private, no-store')
+  async removeZone(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('zoneId', ParseUUIDPipe) zoneId: string,
+    @Req() request: FastifyRequest,
+  ) {
+    const { camera, tenantId } = await this.requireCamera(request, id);
+    if (!await this.database.zones.remove(tenantId, camera.id, zoneId)) {
+      throw new NotFoundException('Camera zone not found.');
     }
-    return this.database.zones.add(tenantId, camera.id, zone.data);
   }
 
   @Get(':id/media')

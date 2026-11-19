@@ -6,22 +6,28 @@ export class CameraApiError extends Error {
   }
 }
 
-async function request<T>(
-  path: string,
-  schema: { parse(value: unknown): T },
-  message: string,
-  options?: RequestInit,
-) {
+async function checkedRequest(path: string, message: string, options?: RequestInit) {
   const response = await fetch(path, options);
   if (!response.ok) {
     const problem = await response.json().catch(() => null);
     throw new CameraApiError(response.status,
       response.status < 500 && typeof problem?.message === 'string' ? problem.message : message);
   }
+  return response;
+}
+
+async function request<T>(
+  path: string,
+  schema: { parse(value: unknown): T },
+  message: string,
+  options?: RequestInit,
+) {
+  const response = await checkedRequest(path, message, options);
   return schema.parse(await response.json());
 }
 
 const cameraPath = (id: string) => `/api/cameras/${id}`;
+const zonePath = (id: string, zoneId: string) => `${cameraPath(id)}/zones/${zoneId}`;
 
 export const cameraApi = {
   list(signal: AbortSignal) {
@@ -45,6 +51,16 @@ export const cameraApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(zone),
     });
+  },
+  updateZone(id: string, zoneId: string, zone: CameraZoneInput) {
+    return request(zonePath(id, zoneId), cameraZone, 'Could not update the zone. Try again.', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(zone),
+    });
+  },
+  async removeZone(id: string, zoneId: string) {
+    await checkedRequest(zonePath(id, zoneId), 'Could not remove the zone. Try again.', { method: 'DELETE' });
   },
   video: (id: string) => `${cameraPath(id)}/replay/video`,
   status(id: string, signal: AbortSignal) {

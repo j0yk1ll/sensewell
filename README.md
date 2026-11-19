@@ -21,7 +21,7 @@ Compose starts PostgreSQL, applies the Drizzle migrations, then starts the app. 
 
 1. Create an operator account and sign in. Each account has its own camera workspace.
 2. Enter a camera name and upload an H.264 MP4 clip up to 512 MiB. Select the camera to reopen its source preview, then scrub the preview timeline to inspect a frame.
-3. Choose **Draw zone**, place the corners of the area on the preview, enter a name, and choose **Save zone**. Saved outlines appear on the camera when you reopen it.
+3. Choose **Draw zone**, place the corners of the area on the preview, enter a name, and choose **Save zone**. You can save multiple zones. Use **Edit** beside a zone to rename it or redraw its outline, or **Remove** to delete that zone.
 4. Select **Loop replay** if needed, then choose **Start replay**. The replay display marks the simulated shift and shows the source position and pass number. **Stop replay** returns to the source preview.
 
 FFmpeg decodes up to 10 replay frames per second at 1× source speed. Each pass has a persistent ID tied to the source camera. Active playback runs in the app process and stops when that process exits.

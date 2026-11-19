@@ -2,7 +2,7 @@ import type { CameraZone, ZonePoint } from '@sensewell/contracts';
 import 'konva/lib/shapes/Circle.js';
 import 'konva/lib/shapes/Line.js';
 import 'konva/lib/shapes/Text.js';
-import { useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
+import { useLayoutEffect, useState, type KeyboardEvent, type RefObject } from 'react';
 import { Circle, Layer, Line, Stage, Text } from 'react-konva/lib/ReactKonvaCore.js';
 
 type Size = { width: number; height: number };
@@ -18,13 +18,13 @@ function clampCoordinate(value: number) {
   return Math.min(1, Math.max(0, value));
 }
 
-export default function ZoneCanvas({ footage, sourceSize, zones, draft }: {
+export default function ZoneCanvas({ footage, sourceSize, zones, draft, drawingArea }: {
   footage: RefObject<HTMLDivElement | null>;
   sourceSize: Size;
   zones: CameraZone[];
   draft?: { points: ZonePoint[]; saving: boolean; onPoint: (point: ZonePoint) => void };
+  drawingArea?: RefObject<HTMLDivElement | null>;
 }) {
-  const overlay = useRef<HTMLDivElement>(null);
   const [footageSize, setFootageSize] = useState<Size>();
   const [cursor, setCursor] = useState<ZonePoint>({ x: 0.5, y: 0.5 });
   const [keyboardCursor, setKeyboardCursor] = useState(false);
@@ -53,8 +53,8 @@ export default function ZoneCanvas({ footage, sourceSize, zones, draft }: {
   const hasImage = width > 0 && height > 0;
 
   useLayoutEffect(() => {
-    if (drawing && hasImage) overlay.current?.focus();
-  }, [drawing, hasImage]);
+    if (drawing && hasImage) drawingArea?.current?.focus();
+  }, [drawing, drawingArea, hasImage]);
 
   function handleKey(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -81,7 +81,7 @@ export default function ZoneCanvas({ footage, sourceSize, zones, draft }: {
   }
 
   return (
-    <div ref={overlay} className={`absolute ${drawing ? 'cursor-crosshair touch-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-white' : 'pointer-events-none'}`}
+    <div ref={drawingArea} className={`absolute ${drawing ? 'cursor-crosshair touch-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-white' : 'pointer-events-none'}`}
       style={{ top: (footageSize.height - height) / 2, left: (footageSize.width - width) / 2 }}
       tabIndex={drawing ? 0 : undefined} role={drawing ? 'group' : undefined}
       aria-label={drawing ? 'Zone drawing area' : undefined} aria-describedby={drawing ? 'zone-drawing-instructions' : undefined}
