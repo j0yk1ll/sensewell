@@ -9,6 +9,7 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsc",
+    "test": "node --test test/camera-zone.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

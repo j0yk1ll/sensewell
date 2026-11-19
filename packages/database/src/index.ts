@@ -2,9 +2,9 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { requireEnv } from './require-env.js';
-import { operationalEvents, replayPasses, syntheticCameras } from './schema.js';
+import { cameraZones, operationalEvents, replayPasses, syntheticCameras } from './schema.js';
 
-export { operationalEvents, replayPasses, syntheticCameras } from './schema.js';
+export { cameraZones, operationalEvents, replayPasses, syntheticCameras } from './schema.js';
 
 type TenantTransaction = Parameters<Parameters<ReturnType<typeof drizzle>['transaction']>[0]>[0];
 
@@ -29,6 +29,11 @@ export function createDatabase({ max }: { max?: number } = {}) {
     id: syntheticCameras.id,
     name: syntheticCameras.name,
     durationMs: syntheticCameras.durationMs,
+  };
+  const zoneFields = {
+    id: cameraZones.id,
+    name: cameraZones.name,
+    points: cameraZones.points,
   };
 
   return {
@@ -55,6 +60,19 @@ export function createDatabase({ max }: { max?: number } = {}) {
       },
       async recordPass(tenantId: string, pass: { cameraId: string; id: string }) {
         await forTenant(tenantId, (tx) => tx.insert(replayPasses).values({ ...pass, tenantId }));
+      },
+    },
+    zones: {
+      list(tenantId: string, cameraId: string) {
+        return forTenant(tenantId, (tx) => tx.select(zoneFields).from(cameraZones)
+          .where(and(eq(cameraZones.tenantId, tenantId), eq(cameraZones.cameraId, cameraId)))
+          .orderBy(asc(cameraZones.createdAt), asc(cameraZones.id)));
+      },
+      async add(tenantId: string, cameraId: string, zone: Pick<typeof cameraZones.$inferInsert, 'name' | 'points'>) {
+        const [saved] = await forTenant(tenantId, (tx) => tx.insert(cameraZones)
+          .values({ ...zone, tenantId, cameraId }).returning(zoneFields));
+        if (!saved) throw new Error('Zone insert returned no row.');
+        return saved;
       },
     },
     close() {

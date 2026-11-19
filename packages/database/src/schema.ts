@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, foreignKey, index, integer, pgPolicy, pgRole, pgTable, text, timestamp, unique, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { boolean, foreignKey, index, integer, jsonb, pgPolicy, pgRole, pgTable, text, timestamp, unique, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 const applicationRole = pgRole('sensewell_app').existing();
 
@@ -79,6 +79,23 @@ export const syntheticCameras = pgTable('synthetic_cameras', {
 }, (camera) => [
   tenantIsolation(camera.tenantId),
   unique().on(camera.tenantId, camera.id),
+]).enableRLS();
+
+export const cameraZones = pgTable('camera_zones', {
+  id: uuid().defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  cameraId: uuid('camera_id').notNull(),
+  name: text().notNull(),
+  points: jsonb().$type<{ x: number; y: number }[]>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (zone) => [
+  tenantIsolation(zone.tenantId),
+  foreignKey({
+    name: 'camera_zones_camera_fk',
+    columns: [zone.tenantId, zone.cameraId],
+    foreignColumns: [syntheticCameras.tenantId, syntheticCameras.id],
+  }).onDelete('cascade'),
+  index().on(zone.tenantId, zone.cameraId),
 ]).enableRLS();
 
 export const replayPasses = pgTable('replay_passes', {

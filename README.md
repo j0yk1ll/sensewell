@@ -21,7 +21,8 @@ Compose starts PostgreSQL, applies the Drizzle migrations, then starts the app. 
 
 1. Create an operator account and sign in. Each account has its own camera workspace.
 2. Enter a camera name and upload an H.264 MP4 clip up to 512 MiB. Select the camera to reopen its source preview, then scrub the preview timeline to inspect a frame.
-3. Select **Loop replay** if needed, then choose **Start replay**. The replay display marks the simulated shift and shows the source position and pass number. **Stop replay** returns to the source preview.
+3. Choose **Draw zone**, place the corners of the area on the preview, enter a name, and choose **Save zone**. Saved outlines appear on the camera when you reopen it.
+4. Select **Loop replay** if needed, then choose **Start replay**. The replay display marks the simulated shift and shows the source position and pass number. **Stop replay** returns to the source preview.
 
 FFmpeg decodes up to 10 replay frames per second at 1× source speed. Each pass has a persistent ID tied to the source camera. Active playback runs in the app process and stops when that process exits.
 
@@ -59,6 +60,6 @@ DATABASE_APP_PASSWORD=test-app \
 pnpm test
 ```
 
-The test applies the checked-in migrations and uses the application login to insert a tenant-owned event. It verifies that PostgreSQL returns the event to its owner, hides it from another tenant, and rejects a cross-tenant insert. Stop the disposable database with `docker stop sensewell-test-db`.
+The tests apply the checked-in migrations and verify tenant isolation for events and camera zones under the application login. They also verify that a saved zone is returned only for its camera. Stop the disposable database with `docker stop sensewell-test-db`.
 
 GitHub Actions runs lint, type checking, and the PostgreSQL integration test on every push. It also builds and starts the Compose stack and checks the page and health endpoint.

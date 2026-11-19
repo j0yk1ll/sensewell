@@ -61,7 +61,7 @@
 }
 
 .footage :is(video, img) {
-  @apply h-full w-full object-contain;
+  @apply absolute inset-0 h-full w-full object-contain;
 }
 
 .footage-message {
@@ -74,6 +74,10 @@
 
 .camera-viewer:fullscreen .footage-with-timeline {
   @apply grid-rows-[minmax(0,1fr)_auto];
+}
+
+.camera-viewer:fullscreen .footage-with-zones {
+  @apply grid-rows-[minmax(8rem,1fr)_auto_auto] overflow-y-auto;
 }
 
 .camera-viewer:fullscreen .footage {

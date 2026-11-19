@@ -8,7 +8,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
-import { cameraApi } from './camera-api';
+import { cameraApi, cameraZoneQuery } from './camera-api';
+import { ZoneEditor } from './zone-editor';
+import { ZoneOverlay } from './zone-overlay';
 
 const replayLabel = {
   idle: 'Ready to replay',
@@ -100,12 +102,12 @@ export function CameraViewer({ camera, tenantId }: { camera: SyntheticCamera; te
 
       {showReplay
         ? <div className="footage-with-timeline grid">
-          <ReplayVideo key={replayVersion} id={camera.id} stopping={status?.state === 'stopping'} />
+          <ReplayVideo key={replayVersion} id={camera.id} tenantId={tenantId} stopping={status?.state === 'stopping'} />
           <FootageTimeline durationMs={camera.durationMs}
             positionMs={status?.state === 'running' ? status.sourceMs
               : status?.state === 'finished' ? camera.durationMs : 0} />
         </div>
-        : <ClipPreview id={camera.id} />}
+        : <ClipPreview id={camera.id} tenantId={tenantId} />}
 
       <div className="grid gap-4 px-5 py-5 sm:px-6">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
@@ -145,12 +147,13 @@ export function CameraViewer({ camera, tenantId }: { camera: SyntheticCamera; te
   );
 }
 
-function ClipPreview({ id }: { id: string }) {
+function ClipPreview({ id, tenantId }: { id: string; tenantId: string }) {
   const video = useRef<HTMLVideoElement>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'unavailable'>('loading');
   const [attempt, setAttempt] = useState(0);
   const [durationMs, setDurationMs] = useState(0);
   const [positionMs, setPositionMs] = useState(0);
+  const [sourceSize, setSourceSize] = useState<{ width: number; height: number }>();
 
   function seek(position: number) {
     if (video.current) {
@@ -160,37 +163,37 @@ function ClipPreview({ id }: { id: string }) {
   }
 
   return (
-    <div className="footage-with-timeline grid">
-      <div className="footage" onContextMenu={(event) => event.preventDefault()}>
-        <video
-          ref={video} key={attempt}
-          className={`pointer-events-none ${state === 'unavailable' ? 'invisible' : ''}`}
-          aria-label="Source clip preview" src={cameraApi.media(id)} preload="metadata"
-          playsInline disablePictureInPicture disableRemotePlayback
-          onPlay={(event) => event.currentTarget.pause()}
-          onLoadedMetadata={(event) => {
-            const duration = event.currentTarget.duration * 1000;
-            if (Number.isFinite(duration) && duration > 0) {
-              setDurationMs(Math.max(1, Math.round(duration)));
-              setState('ready');
-            } else {
-              setState('unavailable');
-            }
-          }}
-          onError={() => setState('unavailable')}
-        />
-        {state === 'loading' && <p className="footage-message" role="status">Loading preview…</p>}
-        {state === 'unavailable' && <div className="footage-message">
-          <p role="alert">Source preview unavailable.</p>
-          <Button type="button" variant="outline" className="mt-3" onClick={() => {
-            setState('loading');
-            setPositionMs(0);
-            setAttempt(attempt + 1);
-          }}>Retry preview</Button>
-        </div>}
-      </div>
-      {state === 'ready' && <FootageTimeline durationMs={durationMs} positionMs={positionMs} onSeek={seek} />}
-    </div>
+    <ZoneEditor id={id} tenantId={tenantId} sourceSize={state === 'ready' ? sourceSize : undefined}
+      timeline={state === 'ready' && <FootageTimeline durationMs={durationMs} positionMs={positionMs} onSeek={seek} />}>
+      <video
+        ref={video} key={attempt}
+        className={`pointer-events-none ${state === 'unavailable' ? 'invisible' : ''}`}
+        aria-label="Source clip preview" src={cameraApi.media(id)} preload="metadata"
+        playsInline disablePictureInPicture disableRemotePlayback
+        onPlay={(event) => event.currentTarget.pause()}
+        onLoadedMetadata={(event) => {
+          const { duration: seconds, videoWidth: width, videoHeight: height } = event.currentTarget;
+          const duration = seconds * 1000;
+          if (Number.isFinite(duration) && duration > 0 && width > 0 && height > 0) {
+            setDurationMs(Math.max(1, Math.round(duration)));
+            setSourceSize({ width, height });
+            setState('ready');
+          } else {
+            setState('unavailable');
+          }
+        }}
+        onError={() => setState('unavailable')}
+      />
+      {state === 'loading' && <p className="footage-message" role="status">Loading preview…</p>}
+      {state === 'unavailable' && <div className="footage-message">
+        <p role="alert">Source preview unavailable.</p>
+        <Button type="button" variant="outline" className="mt-3" onClick={() => {
+          setState('loading');
+          setPositionMs(0);
+          setAttempt(attempt + 1);
+        }}>Retry preview</Button>
+      </div>}
+    </ZoneEditor>
   );
 }
 
@@ -221,14 +224,24 @@ function FootageTimeline({ durationMs, positionMs, onSeek }: {
   );
 }
 
-function ReplayVideo({ id, stopping }: { id: string; stopping: boolean }) {
+function ReplayVideo({ id, tenantId, stopping }: { id: string; tenantId: string; stopping: boolean }) {
+  const footage = useRef<HTMLDivElement>(null);
   const [unavailable, setUnavailable] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [sourceSize, setSourceSize] = useState<{ width: number; height: number }>();
+  const zones = useQuery(cameraZoneQuery(id, tenantId));
+  const showingFootage = !stopping && !unavailable;
 
   return (
-    <div className="footage">
-      {!stopping && !unavailable && <img key={attempt} src={cameraApi.video(id)} alt="Replay footage"
-        onError={() => setUnavailable(true)} />}
+    <div ref={footage} className="footage">
+      {showingFootage && <img key={attempt} src={cameraApi.video(id)} alt="Replay footage"
+        onLoad={({ currentTarget: { naturalWidth: width, naturalHeight: height } }) => setSourceSize({ width, height })}
+        onError={() => {
+          setSourceSize(undefined);
+          setUnavailable(true);
+        }} />}
+      {showingFootage && sourceSize && !!zones.data?.length &&
+        <ZoneOverlay footage={footage} sourceSize={sourceSize} zones={zones.data} />}
       {stopping && <p className="footage-message">Closing replay footage…</p>}
       {!stopping && unavailable && <div className="footage-message">
         <p role="alert">Replay footage unavailable.</p>

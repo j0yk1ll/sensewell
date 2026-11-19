@@ -1,4 +1,4 @@
-import { replayStatus, syntheticCamera, syntheticCameraList } from '@sensewell/contracts';
+import { cameraZone, cameraZoneList, replayStatus, syntheticCamera, syntheticCameraList, type CameraZoneInput } from '@sensewell/contracts';
 
 export class CameraApiError extends Error {
   constructor(readonly status: number, message: string) {
@@ -36,6 +36,16 @@ export const cameraApi = {
       });
   },
   media: (id: string) => `${cameraPath(id)}/media`,
+  zones(id: string, signal: AbortSignal) {
+    return request(`${cameraPath(id)}/zones`, cameraZoneList, 'Could not load camera zones.', { signal });
+  },
+  addZone(id: string, zone: CameraZoneInput) {
+    return request(`${cameraPath(id)}/zones`, cameraZone, 'Could not save the zone. Try again.', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(zone),
+    });
+  },
   video: (id: string) => `${cameraPath(id)}/replay/video`,
   status(id: string, signal: AbortSignal) {
     return request(`${cameraPath(id)}/replay`, replayStatus, 'Could not load replay status.', { signal });
@@ -54,3 +64,11 @@ export const cameraApi = {
     });
   },
 };
+
+export function cameraZoneQuery(id: string, tenantId: string) {
+  return {
+    queryKey: ['camera-zones', tenantId, id],
+    queryFn: ({ signal }: { signal: AbortSignal }) => cameraApi.zones(id, signal),
+    retry: false,
+  };
+}

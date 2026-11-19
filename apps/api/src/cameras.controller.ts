@@ -5,7 +5,7 @@ import {
   Param, ParseUUIDPipe, PayloadTooLargeException, Post, Query, Req, Res,
   ServiceUnavailableException, UnsupportedMediaTypeException,
 } from '@nestjs/common';
-import { cameraName, maxCameraNameLength, maxClipBytes, maxClipMiB, replayOptions } from '@sensewell/contracts';
+import { cameraName, cameraZoneInput, maxCameraNameLength, maxClipBytes, maxClipMiB, replayOptions } from '@sensewell/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AuthService } from './auth.js';
 import { ClipStorage } from './clip-storage.js';
@@ -67,6 +67,28 @@ export class CamerasController {
       throw error;
     }
     return camera;
+  }
+
+  @Get(':id/zones')
+  @Header('Cache-Control', 'private, no-store')
+  async listZones(@Param('id', ParseUUIDPipe) id: string, @Req() request: FastifyRequest) {
+    const { camera, tenantId } = await this.requireCamera(request, id);
+    return this.database.zones.list(tenantId, camera.id);
+  }
+
+  @Post(':id/zones')
+  @Header('Cache-Control', 'private, no-store')
+  async addZone(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: FastifyRequest,
+    @Body() body: unknown,
+  ) {
+    const { camera, tenantId } = await this.requireCamera(request, id);
+    const zone = cameraZoneInput.safeParse(body);
+    if (!zone.success) {
+      throw new BadRequestException('Enter a zone name and draw a valid outline within the camera image.');
+    }
+    return this.database.zones.add(tenantId, camera.id, zone.data);
   }
 
   @Get(':id/media')

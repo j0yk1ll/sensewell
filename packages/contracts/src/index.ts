@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+export { cameraZone, cameraZoneInput, cameraZoneList, maxZoneNameLength, maxZonePoints } from './camera-zone.js';
+export type { CameraZone, CameraZoneInput, ZonePoint } from './camera-zone.js';
+
 export const healthResponse = z.object({
   status: z.enum(['ready', 'unavailable']),
 });
