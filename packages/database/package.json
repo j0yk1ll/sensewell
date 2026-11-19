@@ -1,0 +1,26 @@
+{
+  "name": "@sensewell/database",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": ["dist", "migrations"],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "test": "node --experimental-strip-types --test test/tenant-isolation.test.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node dist/migrate.js"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.0",
+    "pg": "^8.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.16.0",
+    "drizzle-kit": "^0.31.0"
+  }
+}

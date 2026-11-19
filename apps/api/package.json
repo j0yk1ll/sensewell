@@ -1,0 +1,27 @@
+{
+  "name": "@sensewell/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc-watch --onSuccess \"node dist/main.js\"",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/static": "^10.1.2",
+    "@nestjs/common": "^11.1.0",
+    "@nestjs/core": "^11.1.0",
+    "@nestjs/platform-fastify": "^11.1.0",
+    "@sensewell/contracts": "workspace:*",
+    "@sensewell/database": "workspace:*",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsc-watch": "^7.2.0"
+  }
+}

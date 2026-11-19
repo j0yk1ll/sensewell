@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: sensewell_test
+          POSTGRES_USER: sensewell_admin
+          POSTGRES_PASSWORD: test-admin
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U sensewell_admin -d sensewell_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+        env:
+          DATABASE_MIGRATION_URL: postgresql://sensewell_admin:test-admin@127.0.0.1:${{ job.services.postgres.ports[5432] }}/sensewell_test
+          DATABASE_URL: postgresql://sensewell_app:test-app@127.0.0.1:${{ job.services.postgres.ports[5432] }}/sensewell_test
+          DATABASE_APP_PASSWORD: test-app
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build and start the application image
+        run: docker compose up --build --wait --wait-timeout 90
+      - name: Verify the application and database
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:3000/ | grep -F '<title>Sensewell</title>'
+          curl --fail --silent --show-error http://127.0.0.1:3000/api/health | grep -F '{"status":"ready"}'
+      - name: Show Compose logs on failure
+        if: failure()
+        run: docker compose logs
+      - name: Stop the stack
+        if: always()
+        run: docker compose down --volumes
