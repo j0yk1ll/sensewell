@@ -10,6 +10,7 @@ const captureLabel: Record<CaptureStatus['state'], string> = {
   connecting: 'Connecting to camera…',
   connected: 'Connected · Recording',
   unavailable: 'Feed unavailable · Retrying',
+  blocked: 'Camera endpoint approval required',
 };
 
 export function IpCameraViewer({ camera, tenantId, onRemoved }: {
@@ -52,7 +53,7 @@ export function IpCameraViewer({ camera, tenantId, onRemoved }: {
         </div>
       </div>}
       <LivePreview id={camera.id} tenantId={tenantId} connected={connected} status={status} />
-      <Recordings cameraId={camera.id} tenantId={tenantId} unavailable={capture.data?.state === 'unavailable'} />
+      <Recordings cameraId={camera.id} tenantId={tenantId} unavailable={capture.data?.state === 'unavailable' || capture.data?.state === 'blocked'} />
     </Card>
   );
 }

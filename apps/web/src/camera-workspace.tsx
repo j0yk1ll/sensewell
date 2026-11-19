@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { maxCameraNameLength, maxClipBytes, maxClipMiB, type Camera } from '@sensewell/contracts';
+import { maxCameraNameLength, maxCameraStreamUrlLength, maxClipBytes, maxClipMiB, type Camera } from '@sensewell/contracts';
 import { useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { CameraEndpointSettings } from './camera-endpoint-settings';
 import { cameraApi, CameraApiError } from './camera-api';
 import { IpCameraViewer } from './ip-camera-viewer';
 import { CameraViewer } from './camera-viewer';
@@ -74,6 +75,7 @@ export function CameraWorkspace({ operator }: { operator: { id: string; name: st
               : <p className="p-5 text-sm text-slate-600">No cameras yet.</p>)}
           </Card>
           <AddCamera onAdded={cameraAdded} />
+          <CameraEndpointSettings operatorId={operator.id} />
         </aside>
 
         {selected
@@ -155,7 +157,7 @@ function AddCamera({ onAdded }: { onAdded: (camera: Camera) => void }) {
           <div className="field">
             <Label htmlFor="camera-url">RTSP stream URL</Label>
             <Input id="camera-url" name="url" type="url" placeholder="rtsp://192.0.2.10:554/stream"
-              required maxLength={2048} disabled={pending} />
+              required maxLength={maxCameraStreamUrlLength} disabled={pending} />
           </div>
           <div className="field">
             <Label htmlFor="camera-username">Camera username (optional)</Label>

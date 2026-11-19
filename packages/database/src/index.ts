@@ -2,8 +2,9 @@ import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { requireEnv } from './require-env.js';
-import { authUser, cameraRecordings, cameras, cameraZones, operationalEvents, replayPasses } from './schema.js';
+import { authUser, cameraEndpointAdministrators, cameraEndpoints, cameraRecordings, cameras, cameraZones, operationalEvents, replayPasses } from './schema.js';
 
+export { normalizeCameraEndpoint, streamEndpoint } from './camera-endpoint.js';
 export { cameraRecordings, cameras, cameraZones, operationalEvents, replayPasses } from './schema.js';
 
 type TenantTransaction = Parameters<Parameters<ReturnType<typeof drizzle>['transaction']>[0]>[0];
@@ -55,6 +56,27 @@ export function createDatabase({ max }: { max?: number } = {}) {
       await database.execute(sql`select 1 from ${operationalEvents} where false`);
     },
     forTenant,
+    endpoints: {
+      async canManage(userId: string) {
+        const [admin] = await database.select({ id: cameraEndpointAdministrators.userId })
+          .from(cameraEndpointAdministrators).where(eq(cameraEndpointAdministrators.userId, userId));
+        return Boolean(admin);
+      },
+      async list() {
+        const rows = await database.select().from(cameraEndpoints).orderBy(asc(cameraEndpoints.endpoint));
+        return rows.map(({ endpoint }) => endpoint);
+      },
+      async contains(endpoint: string) {
+        const [row] = await database.select().from(cameraEndpoints).where(eq(cameraEndpoints.endpoint, endpoint));
+        return Boolean(row);
+      },
+      async add(userId: string, endpoint: string) {
+        await forTenant(userId, (tx) => tx.insert(cameraEndpoints).values({ endpoint }).onConflictDoNothing());
+      },
+      async remove(userId: string, endpoint: string) {
+        await forTenant(userId, (tx) => tx.delete(cameraEndpoints).where(eq(cameraEndpoints.endpoint, endpoint)));
+      },
+    },
     cameras: {
       list(tenantId: string) {
         return forTenant(tenantId, (tx) => tx.select(cameraFields).from(cameras)

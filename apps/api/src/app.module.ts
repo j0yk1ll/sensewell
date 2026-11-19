@@ -9,6 +9,7 @@ import type { HealthResponse } from '@sensewell/contracts';
 import { DatabaseService } from './database.service.js';
 import { AuthController, AuthService } from './auth.js';
 import { CamerasController } from './cameras.controller.js';
+import { CameraEndpointsController } from './camera-endpoints.controller.js';
 import { ClipStorage } from './clip-storage.js';
 import { IpCameraService } from './ip-camera.service.js';
 import { ReplayService } from './replay.service.js';
@@ -32,7 +33,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, CamerasController],
+  controllers: [HealthController, AuthController, CamerasController, CameraEndpointsController],
   providers: [DatabaseService, AuthService, ClipStorage, ReplayService, IpCameraService],
 })
 export class AppModule {}

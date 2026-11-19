@@ -22,6 +22,7 @@ services:
     environment:
       DATABASE_MIGRATION_URL: postgresql://sensewell_admin:local-admin@db:5432/sensewell
       DATABASE_APP_PASSWORD: local-app
+      IP_CAMERA_ENDPOINTS: ${IP_CAMERA_ENDPOINTS:-}
     depends_on:
       db:
         condition: service_healthy
@@ -35,7 +36,6 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       BETTER_AUTH_TRUSTED_ORIGINS: ${BETTER_AUTH_TRUSTED_ORIGINS:-http://127.0.0.1:3000}
       CLIP_STORAGE_DIR: /app/clips
-      IP_CAMERA_ENDPOINTS: ${IP_CAMERA_ENDPOINTS:-}
       RECORDING_STORAGE_DIR: /app/recordings
     volumes:
       - camera-clips:/app/clips

@@ -18,12 +18,6 @@ export function cameraStream(input: IpCameraInput) {
   return url;
 }
 
-export function isAllowedStream(url: URL) {
-  const endpoint = `${url.hostname.toLowerCase()}:${url.port || '554'}`;
-  return url.protocol === 'rtsp:' && (process.env.IP_CAMERA_ENDPOINTS ?? '')
-    .split(',').some((allowed) => allowed.trim().toLowerCase() === endpoint);
-}
-
 function credentialsKey() {
   const secret = process.env.BETTER_AUTH_SECRET;
   if (!secret) throw new Error('Camera credentials key is unavailable.');

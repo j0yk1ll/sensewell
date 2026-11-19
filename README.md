@@ -30,11 +30,21 @@ The Compose secret and origins are for local use. Set `BETTER_AUTH_SECRET` to a 
 
 ## Connect and record an IP camera
 
-1. Set `IP_CAMERA_ENDPOINTS` to the trusted camera endpoints reachable from the app container. This checks the address submitted during setup. FFmpeg can follow redirects supplied by the approved camera, so any network-level destination restrictions must be enforced by the deployment. Use comma-separated host and port pairs, such as `192.0.2.10:554`, in the Compose environment or `.env`. Recreate the app after changing the setting.
-2. Sign in and select **IP camera** under **Camera source**. Enter a name, the `rtsp://` stream URL, and any credentials in the separate fields. Choose **Connect IP camera**.
+1. Sign in. A camera endpoint administrator can open **Camera endpoints** and approve a hostname, IP address, or RTSP URL. Approvals are saved by host and port, with 554 as the default. For the public Sarine Valley webcam, paste `rtsp://rtsp.143b.ch:554/stream`.
+2. Select **IP camera** under **Camera source**. Enter a name, the `rtsp://` stream URL, and any credentials in the separate fields. Choose **Connect IP camera**.
 3. Capture starts automatically. When the feed is interrupted the workspace reports it as unavailable and retries in the background. Capture also resumes after an app restart. Keep `BETTER_AUTH_SECRET` stable across restarts so saved camera settings can be decrypted.
 4. Open a time range in **Recorded footage**. Completed MP4 segments become playable as they are recorded. The timeline shows outages between segments as **Footage unavailable**, and playback stops at a gap.
 5. Choose **Remove camera** and confirm to stop capture and remove the camera from the workspace.
+
+To give an existing account access to the endpoint settings, run this once from the Compose project and reload the workspace:
+
+```sh
+docker compose run --rm migrate node node_modules/@sensewell/database/dist/grant-camera-endpoint-admin.js you@example.com
+```
+
+Outside Compose, run the compiled `packages/database/dist/grant-camera-endpoint-admin.js` with `DATABASE_MIGRATION_URL` set. The approval list applies to all camera workspaces. Revoking an endpoint stops active capture from it. Existing footage stays playable, and capture resumes if the endpoint is approved again. Deployments upgrading from `IP_CAMERA_ENDPOINTS` import that list on the first migration run. Subsequent changes are managed in the UI.
+
+Approve only endpoints you trust. The list checks the submitted address. FFmpeg can follow redirects from an approved server, so network-level restrictions on redirect destinations are enforced by the deployment.
 
 The initial input is RTSP over TCP. The app records video as browser-playable H.264 using the existing FFmpeg runtime. For a local run outside Compose, set `RECORDING_STORAGE_DIR` to choose a private storage directory. The default is `.sensewell-recordings` in the API working directory.
 

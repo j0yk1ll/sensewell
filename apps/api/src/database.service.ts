@@ -5,6 +5,7 @@ import { createDatabase } from '@sensewell/database';
 export class DatabaseService implements OnApplicationShutdown {
   private readonly database = createDatabase();
   readonly cameras = this.database.cameras;
+  readonly endpoints = this.database.endpoints;
   readonly zones = this.database.zones;
   readonly recordings = this.database.recordings;
   readonly authPool = this.database.authPool;

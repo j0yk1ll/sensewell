@@ -141,3 +141,24 @@ export const cameraRecordings = pgTable('camera_recordings', {
   }).onDelete('cascade'),
   index().on(recording.tenantId, recording.cameraId, recording.startedAt),
 ]).enableRLS();
+
+export const cameraEndpointAdministrators = pgTable('camera_endpoint_administrators', {
+  userId: uuid('user_id').primaryKey().references(() => authUser.id, { onDelete: 'cascade' }),
+});
+
+const managesCameraEndpoints = sql`exists (
+  select from ${cameraEndpointAdministrators}
+  where user_id = nullif(current_setting('sensewell.tenant_id', true), '')::uuid
+)`;
+
+export const cameraEndpoints = pgTable('camera_endpoints', {
+  endpoint: text().primaryKey(),
+}, () => [
+  pgPolicy('camera_endpoint_read', { for: 'select', to: applicationRole, using: sql`true` }),
+  pgPolicy('camera_endpoint_add', { for: 'insert', to: applicationRole, withCheck: managesCameraEndpoints }),
+  pgPolicy('camera_endpoint_remove', { for: 'delete', to: applicationRole, using: managesCameraEndpoints }),
+]).enableRLS();
+
+export const cameraEndpointImport = pgTable('camera_endpoint_import', {
+  id: integer().primaryKey(),
+}, (state) => [check('camera_endpoint_import_singleton', sql`${state.id} = 1`)]);

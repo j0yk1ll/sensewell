@@ -12,7 +12,7 @@ import { AuthService } from './auth.js';
 import { ClipStorage } from './clip-storage.js';
 import { DatabaseService } from './database.service.js';
 import { IpCameraService } from './ip-camera.service.js';
-import { cameraStream, encryptStream, isAllowedStream } from './ip-camera-source.js';
+import { cameraStream, encryptStream } from './ip-camera-source.js';
 import { ReplayService } from './replay.service.js';
 
 const privateFootageHeaders = {
@@ -68,13 +68,14 @@ export class CamerasController {
     if (!input.success || !stream) {
       throw new BadRequestException('Enter an RTSP stream URL and provide any credentials in the separate fields.');
     }
-    if (!isAllowedStream(stream)) throw new BadRequestException('This camera endpoint is not configured for Sensewell.');
+    const endpoint = await this.ipCameras.allowedEndpoint(stream);
+    if (!endpoint) throw new BadRequestException('This camera endpoint needs approval in Camera endpoints.');
 
     const camera = { id: randomUUID(), name: input.data.name, kind: 'ip' as const };
     await this.database.cameras.addIp(tenantId, {
       id: camera.id, name: camera.name, encryptedStream: encryptStream(stream),
     });
-    this.ipCameras.start(tenantId, camera.id, stream);
+    this.ipCameras.start(tenantId, camera.id, stream, endpoint);
     return camera;
   }
 

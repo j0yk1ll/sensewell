@@ -1,4 +1,4 @@
-import { cameraList, cameraZone, cameraZoneList, captureStatus, ipCamera, recordingList, replayStatus, syntheticCamera, type CameraZoneInput, type IpCameraInput } from '@sensewell/contracts';
+import { cameraEndpointSettings, cameraList, cameraZone, cameraZoneList, captureStatus, ipCamera, recordingList, replayStatus, syntheticCamera, type CameraZoneInput, type IpCameraInput } from '@sensewell/contracts';
 
 export class CameraApiError extends Error {
   constructor(readonly status: number, message: string) {
@@ -28,6 +28,26 @@ async function request<T>(
 
 const cameraPath = (id: string) => `/api/cameras/${id}`;
 const zonePath = (id: string, zoneId: string) => `${cameraPath(id)}/zones/${zoneId}`;
+
+const endpointPath = '/api/camera-endpoints';
+
+export const cameraEndpointApi = {
+  settings(signal: AbortSignal) {
+    return request(endpointPath, cameraEndpointSettings, 'Could not load camera endpoint settings.', { signal });
+  },
+  async approve(endpoint: string) {
+    await checkedRequest(endpointPath, 'Could not approve the camera endpoint.', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint }),
+    });
+  },
+  async revoke(endpoint: string) {
+    await checkedRequest(`${endpointPath}/${encodeURIComponent(endpoint)}`, 'Could not revoke the camera endpoint.', {
+      method: 'DELETE',
+    });
+  },
+};
 
 export const cameraApi = {
   list(signal: AbortSignal) {

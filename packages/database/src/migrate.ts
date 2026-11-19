@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Client, escapeLiteral } from 'pg';
+import { normalizeCameraEndpoint } from './camera-endpoint.js';
 import { requireEnv } from './require-env.js';
 
 export async function migrateDatabase() {
@@ -29,6 +30,19 @@ export async function migrateDatabase() {
     await migrate(drizzle(client), {
       migrationsFolder: fileURLToPath(new URL('../migrations', import.meta.url)),
     });
+
+    const endpoints = (process.env.IP_CAMERA_ENDPOINTS ?? '').split(',')
+      .map(normalizeCameraEndpoint).filter((endpoint) => endpoint !== undefined);
+    // Claim the import and apply it together so UI removals survive every subsequent migration run.
+    await client.query(`
+      with initial_import as (
+        insert into camera_endpoint_import (id) values (1)
+        on conflict do nothing returning id
+      )
+      insert into camera_endpoints (endpoint)
+      select endpoint from initial_import, unnest($1::text[]) as imported(endpoint)
+      on conflict do nothing
+    `, [endpoints]);
   } finally {
     await client.end();
   }

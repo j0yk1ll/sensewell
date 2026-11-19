@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { sql } from 'drizzle-orm';
+import { Client } from 'pg';
 import { migrateDatabase } from '../dist/migrate.js';
-import { cameraRecordings, cameraZones, createDatabase, operationalEvents } from '../dist/index.js';
+import { cameraRecordings, cameraZones, createDatabase, normalizeCameraEndpoint, operationalEvents } from '../dist/index.js';
 
 test('PostgreSQL isolates operational events under the application role', async (t) => {
   await migrateDatabase();
@@ -124,4 +125,48 @@ test('IP camera recordings are private to their camera and tenant', async (t) =>
   assert.equal(await database.cameras.removeIp(tenant, cameraId), true);
   assert.equal(await database.cameras.find(tenant, cameraId), undefined);
   assert.deepEqual(await database.recordings.list(tenant, cameraId), [segment]);
+});
+
+test('only endpoint administrators can change camera approvals', async (t) => {
+  await migrateDatabase();
+
+  const database = createDatabase({ max: 1 });
+  t.after(() => database.close());
+
+  const administrator = randomUUID();
+  const operator = randomUUID();
+  const endpoint = normalizeCameraEndpoint(`Camera-${randomUUID()}.test`);
+  assert.ok(endpoint);
+  assert.ok(endpoint.endsWith('.test:554'));
+
+  const owner = new Client({ connectionString: process.env.DATABASE_MIGRATION_URL });
+  await owner.connect();
+  t.after(() => owner.end());
+  await owner.query('insert into "user" (id, name, email) values ($1, $2, $3)',
+    [administrator, 'Camera administrator', `${administrator}@example.test`]);
+  await owner.query('insert into camera_endpoint_administrators (user_id) values ($1)', [administrator]);
+
+  assert.equal(await database.endpoints.canManage(administrator), true);
+  assert.equal(await database.endpoints.canManage(operator), false);
+  await assert.rejects(database.endpoints.add(operator, endpoint),
+    (error: unknown) => error instanceof Error && (error.cause as { code?: string } | undefined)?.code === '42501');
+
+  await database.endpoints.add(administrator, endpoint);
+  await database.endpoints.add(administrator, endpoint);
+  assert.equal((await database.endpoints.list()).filter((value) => value === endpoint).length, 1);
+  await database.endpoints.remove(operator, endpoint);
+  assert.equal(await database.endpoints.contains(endpoint), true);
+  await database.endpoints.remove(administrator, endpoint);
+  assert.equal(await database.endpoints.contains(endpoint), false);
+});
+
+test('camera approvals accept RTSP URLs and keep only the endpoint', () => {
+  assert.equal(normalizeCameraEndpoint('rtsp://rtsp.143b.ch:554'), 'rtsp.143b.ch:554');
+  assert.equal(normalizeCameraEndpoint('rtsp://CAMERA.test/live?channel=1'), 'camera.test:554');
+  assert.equal(normalizeCameraEndpoint('rtsp://[2001:0db8::1]:8554/live'), '[2001:db8::1]:8554');
+  assert.equal(normalizeCameraEndpoint('[2001:0db8::1]:8554'), '[2001:db8::1]:8554');
+  assert.equal(normalizeCameraEndpoint('camera.test:65536'), undefined);
+  assert.equal(normalizeCameraEndpoint('camera.test/live'), undefined);
+  assert.equal(normalizeCameraEndpoint('https://camera.test/live'), undefined);
+  assert.equal(normalizeCameraEndpoint('rtsp://user:pass@camera.test/live'), undefined);
 });

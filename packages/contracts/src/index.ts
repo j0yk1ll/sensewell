@@ -10,6 +10,7 @@ export const healthResponse = z.object({
 export type HealthResponse = z.infer<typeof healthResponse>;
 
 export const maxCameraNameLength = 100;
+export const maxCameraStreamUrlLength = 2048;
 export const maxClipMiB = 512;
 export const maxClipBytes = maxClipMiB * 1024 * 1024;
 export const cameraName = z.string().trim().min(1).max(maxCameraNameLength);
@@ -24,7 +25,7 @@ export type SyntheticCamera = z.infer<typeof syntheticCamera>;
 
 export const ipCameraInput = z.object({
   name: cameraName,
-  url: z.string().trim().min(1).max(2048),
+  url: z.string().trim().min(1).max(maxCameraStreamUrlLength),
   username: z.string().max(256).default(''),
   password: z.string().max(256).default(''),
 });
@@ -35,7 +36,7 @@ export const cameraList = z.array(z.union([syntheticCamera, ipCamera]));
 export type Camera = z.infer<typeof cameraList>[number];
 export type IpCamera = z.infer<typeof ipCamera>;
 
-export const captureStatus = z.object({ state: z.enum(['connecting', 'connected', 'unavailable']) });
+export const captureStatus = z.object({ state: z.enum(['connecting', 'connected', 'unavailable', 'blocked']) });
 export type CaptureStatus = z.infer<typeof captureStatus>;
 
 export const recordingList = z.array(z.object({
@@ -55,3 +56,10 @@ export const replayStatus = z.discriminatedUnion('state', [
   }),
 ]);
 export type ReplayStatus = z.infer<typeof replayStatus>;
+
+
+export const cameraEndpointInput = z.object({ endpoint: z.string().trim().min(1).max(maxCameraStreamUrlLength) });
+export const cameraEndpointSettings = z.object({
+  canManage: z.boolean(),
+  endpoints: z.array(z.string()),
+});
