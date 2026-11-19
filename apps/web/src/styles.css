@@ -1,5 +1,49 @@
 @import "tailwindcss";
 
 body {
-  @apply min-h-screen bg-slate-50;
+  @apply min-h-screen bg-slate-100 text-slate-950 antialiased;
+}
+
+.panel {
+  @apply rounded-xl border border-slate-200 bg-white shadow-xs;
+}
+
+.button {
+  @apply inline-flex min-h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.button.primary {
+  @apply border-teal-800 bg-teal-800 text-white enabled:hover:bg-teal-900;
+}
+
+:where(button, input, video):focus-visible {
+  @apply outline-2 outline-offset-2 outline-teal-700;
+}
+
+.field {
+  @apply grid min-w-0 gap-1.5 text-sm font-semibold text-slate-800;
+}
+
+.field input {
+  @apply min-w-0 rounded-md border border-slate-300 bg-white px-3 py-2 font-normal text-slate-950;
+}
+
+.field input::file-selector-button {
+  @apply mr-2 rounded-sm bg-slate-100 px-2 py-0.5 font-medium text-slate-900;
+}
+
+.error {
+  @apply text-sm font-medium text-red-800;
+}
+
+.footage {
+  @apply relative grid aspect-video w-full place-items-center overflow-hidden bg-slate-950;
+}
+
+.footage :is(video, img) {
+  @apply h-full w-full object-contain;
+}
+
+.footage-message {
+  @apply absolute inset-x-2 text-center text-sm text-white;
 }

@@ -1,27 +1,16 @@
 import {
   Controller,
   Get,
-  Injectable,
   Logger,
   Module,
   ServiceUnavailableException,
-  type OnApplicationShutdown,
 } from '@nestjs/common';
 import type { HealthResponse } from '@sensewell/contracts';
-import { createDatabase } from '@sensewell/database';
-
-@Injectable()
-class DatabaseService implements OnApplicationShutdown {
-  private readonly database = createDatabase();
-
-  checkReadiness() {
-    return this.database.checkReadiness();
-  }
-
-  onApplicationShutdown() {
-    return this.database.close();
-  }
-}
+import { DatabaseService } from './database.service.js';
+import { AuthController, AuthService } from './auth.js';
+import { CamerasController } from './cameras.controller.js';
+import { ClipStorage } from './clip-storage.js';
+import { ReplayService } from './replay.service.js';
 
 @Controller('api')
 class HealthController {
@@ -42,7 +31,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController],
-  providers: [DatabaseService],
+  controllers: [HealthController, AuthController, CamerasController],
+  providers: [DatabaseService, AuthService, ClipStorage, ReplayService],
 })
 export class AppModule {}

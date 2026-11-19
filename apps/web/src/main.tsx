@@ -1,10 +1,12 @@
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { createRoot } from 'react-dom/client';
+import { CameraWorkspace } from './camera-workspace';
+import { authClient, SignIn } from './operator-auth';
 import { fetchHealth } from './health';
 import './styles.css';
 
-function StatusPage() {
+function ConnectionStatus() {
   const health = useQuery({
     queryKey: ['health'],
     queryFn: ({ signal }) => fetchHealth(signal),
@@ -21,24 +23,39 @@ function StatusPage() {
     message = 'The API is connected to PostgreSQL.';
   }
 
+  return <p className="text-xs text-slate-600" role="status">{message}</p>;
+}
+
+function App() {
+  const session = authClient.useSession();
   return (
-    <main className="mx-auto w-full max-w-xl px-6 py-20 sm:py-28">
-      <h1 className="mb-8 text-4xl font-semibold tracking-tight text-slate-900">Sensewell</h1>
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="app-status">
-        <h2 id="app-status" className="text-lg font-medium text-slate-900">Application status</h2>
-        <p className="mt-2 text-slate-700" role="status">{message}</p>
-      </section>
-    </main>
+    <>
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-5 gap-y-1 px-5 py-4 sm:px-8">
+          <h1 className="text-xl font-bold tracking-tight text-slate-950">Sensewell<span aria-hidden="true" className="text-teal-700">.</span></h1>
+          <ConnectionStatus />
+        </div>
+      </header>
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-8 sm:py-12">
+        {session.isPending ? <p role="status">Checking your session…</p>
+          : session.error ? <div className="panel grid justify-items-start gap-3 p-5">
+            <p className="error" role="alert">Could not check your session.</p>
+            <button className="button" type="button" onClick={() => void session.refetch()}>Retry</button>
+          </div>
+          : session.data ? <CameraWorkspace key={session.data.user.id} operator={session.data.user} />
+          : <SignIn />}
+      </main>
+    </>
   );
 }
 
 const rootRoute = createRootRoute();
-const statusRoute = createRoute({
+const workspaceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  component: StatusPage,
+  component: App,
 });
-const router = createRouter({ routeTree: rootRoute.addChildren([statusRoute]) });
+const router = createRouter({ routeTree: rootRoute.addChildren([workspaceRoute]) });
 
 declare module '@tanstack/react-router' {
   interface Register {

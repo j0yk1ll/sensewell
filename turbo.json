@@ -9,7 +9,7 @@
       "dependsOn": ["^build"],
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["DATABASE_URL"]
+      "passThroughEnv": ["DATABASE_URL", "BETTER_AUTH_SECRET", "BETTER_AUTH_URL", "BETTER_AUTH_TRUSTED_ORIGINS", "CLIP_STORAGE_DIR"]
     },
     "typecheck": {
       "dependsOn": ["^build"]

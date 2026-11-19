@@ -3,7 +3,12 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module.js';
 
-const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
+const adapter = new FastifyAdapter();
+adapter.getInstance().addContentTypeParser('application/octet-stream', (_request, body, done) => {
+  done(null, body);
+});
+
+const app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter);
 
 if (process.env.STATIC_ROOT) {
   app.useStaticAssets({ root: process.env.STATIC_ROOT, wildcard: false });

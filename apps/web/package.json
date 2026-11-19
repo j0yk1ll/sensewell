@@ -12,6 +12,7 @@
     "@sensewell/contracts": "workspace:*",
     "@tanstack/react-query": "^5.90.0",
     "@tanstack/react-router": "^1.150.0",
+    "better-auth": "^1.7.26",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

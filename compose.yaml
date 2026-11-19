@@ -31,11 +31,17 @@ services:
     build: .
     environment:
       DATABASE_URL: postgresql://sensewell_app:local-app@db:5432/sensewell
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-local-compose-only-e6c3b5894fc47c631b7b282d47fcb37e}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      BETTER_AUTH_TRUSTED_ORIGINS: ${BETTER_AUTH_TRUSTED_ORIGINS:-http://127.0.0.1:3000}
+      CLIP_STORAGE_DIR: /app/clips
+    volumes:
+      - camera-clips:/app/clips
     depends_on:
       migrate:
         condition: service_completed_successfully
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${SENSEWELL_PORT:-3000}:3000"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => { if (!r.ok) process.exitCode = 1 })"]
       interval: 5s
@@ -44,3 +50,4 @@ services:
 
 volumes:
   postgres-data:
+  camera-clips:

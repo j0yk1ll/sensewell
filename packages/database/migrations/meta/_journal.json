@@ -8,6 +8,13 @@
       "when": 1795106366306,
       "tag": "0000_operational_events",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795113741378,
+      "tag": "0001_synthetic_cameras",
+      "breakpoints": true
     }
   ]
 }
