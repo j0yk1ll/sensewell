@@ -1,4 +1,4 @@
-import type { PersonDetection, ZonePoint } from '@sensewell/contracts';
+import type { PersonDetection, ZoneCrossingDirection, ZonePoint } from '@sensewell/contracts';
 
 interface EntryRule {
   id: string;
@@ -61,7 +61,7 @@ export class ZoneEntryEvaluator {
       for (const track of matches) candidateCounts.set(track, (candidateCounts.get(track) ?? 0) + 1);
     }
 
-    const entries: { rule: Rule; person: PersonDetection }[] = [];
+    const crossings: { rule: Rule; person: PersonDetection; direction: ZoneCrossingDirection }[] = [];
     const versions = rules.map((rule) => ({ rule, version: JSON.stringify([rule.revision, rule.points]) }));
     // Keep unmatched tracks briefly. Discard ambiguous associations instead of guessing.
     this.tracks = tracks.filter((track) => !candidateCounts.has(track));
@@ -77,13 +77,13 @@ export class ZoneEntryEvaluator {
         const inside = insideZone(person.box, rule.points);
         zones.set(rule.id, { inside, version });
         const before = previous?.zones.get(rule.id);
-        if (continuous && before?.version === version && !before.inside && inside) {
-          entries.push({ rule, person });
+        if (continuous && before?.version === version && before.inside !== inside) {
+          crossings.push({ rule, person, direction: inside ? 'entry' : 'exit' });
         }
       }
       this.tracks.push({ person, sourceMs, zones });
     }
     this.lastAnalyzedMs = sourceMs;
-    return entries;
+    return crossings;
   }
 }

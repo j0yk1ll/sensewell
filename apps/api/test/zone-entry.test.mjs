@@ -12,7 +12,7 @@ test('records an outside-to-inside crossing with its qualifying detection', () =
   const pass = new ZoneEntryEvaluator();
   assert.deepEqual(pass.observe(0, [person(0.48)], [rule]), []);
   const inside = person(0.52, 0.5);
-  assert.deepEqual(pass.observe(100, [inside], [rule]), [{ rule, person: inside }]);
+  assert.deepEqual(pass.observe(100, [inside], [rule]), [{ rule, person: inside, direction: 'entry' }]);
   assert.deepEqual(pass.observe(200, [inside], [rule]), []);
 });
 
@@ -24,8 +24,8 @@ test('a filtered or missing observation cannot establish an outside position', (
     assert.deepEqual(pass.observe(0, [inside], [rule]), []);
     assert.deepEqual(pass.observe(100, interruption, [rule]), []);
     assert.deepEqual(pass.observe(200, [inside], [rule]), []);
-    assert.deepEqual(pass.observe(300, [outside], [rule]), []);
-    assert.deepEqual(pass.observe(400, [inside], [rule]), [{ rule, person: inside }]);
+    assert.deepEqual(pass.observe(300, [outside], [rule]), [{ rule, person: outside, direction: 'exit' }]);
+    assert.deepEqual(pass.observe(400, [inside], [rule]), [{ rule, person: inside, direction: 'entry' }]);
   }
 });
 
@@ -60,9 +60,19 @@ test('brief sampling skips keep a credible track while a longer gap starts fresh
   const pass = new ZoneEntryEvaluator();
   const inside = person(0.52);
   pass.observe(0, [person(0.48)], [rule]);
-  assert.deepEqual(pass.observe(400, [inside], [rule]), [{ rule, person: inside }]);
+  assert.deepEqual(pass.observe(400, [inside], [rule]), [{ rule, person: inside, direction: 'entry' }]);
   pass.observe(500, [person(0.48)], [rule]);
   assert.deepEqual(pass.observe(1000, [inside], [rule]), []);
   pass.observe(1100, [person(0.48)], [rule]);
   assert.deepEqual(pass.observe(1700, [inside], [rule]), []);
+});
+
+test('records a separate exit when the same person leaves the zone', () => {
+  const pass = new ZoneEntryEvaluator();
+  const outside = person(0.48);
+  const inside = person(0.52);
+  pass.observe(0, [outside], [rule]);
+  pass.observe(100, [inside], [rule]);
+  assert.deepEqual(pass.observe(200, [outside], [rule]), [{ rule, person: outside, direction: 'exit' }]);
+  assert.deepEqual(pass.observe(300, [outside], [rule]), []);
 });

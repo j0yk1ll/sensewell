@@ -40,6 +40,12 @@ function parseZone(body: unknown) {
   return zone.data;
 }
 
+function parseRule(body: unknown) {
+  const input = zoneEntryRuleInput.safeParse(body);
+  if (!input.success) throw new BadRequestException('Choose a saved zone, a rule name, and a minimum confidence from 0 to 100%.');
+  return input.data;
+}
+
 @Controller('api/cameras')
 export class CamerasController {
   constructor(
@@ -205,11 +211,37 @@ export class CamerasController {
     @Param('id', ParseUUIDPipe) id: string, @Req() request: FastifyRequest, @Body() body: unknown,
   ) {
     const { tenantId } = await this.requireSyntheticCamera(request, id);
-    const input = zoneEntryRuleInput.safeParse(body);
-    if (!input.success) throw new BadRequestException('Choose a saved zone, a rule name, and a minimum confidence from 0 to 100%.');
-    const rule = await this.database.zoneEntryRules.add(tenantId, id, input.data);
+    const rule = await this.database.zoneEntryRules.add(tenantId, id, parseRule(body));
     if (!rule) throw new NotFoundException('Camera zone not found.');
     return rule;
+  }
+
+  @Put(':id/zone-entry-rules/:ruleId')
+  @Header('Cache-Control', 'private, no-store')
+  async updateZoneEntryRule(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('ruleId', ParseUUIDPipe) ruleId: string,
+    @Req() request: FastifyRequest,
+    @Body() body: unknown,
+  ) {
+    const { tenantId } = await this.requireSyntheticCamera(request, id);
+    const rule = await this.database.zoneEntryRules.update(tenantId, id, ruleId, parseRule(body));
+    if (!rule) throw new NotFoundException('Rule or saved zone not found.');
+    return rule;
+  }
+
+  @Delete(':id/zone-entry-rules/:ruleId')
+  @HttpCode(204)
+  @Header('Cache-Control', 'private, no-store')
+  async removeZoneEntryRule(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('ruleId', ParseUUIDPipe) ruleId: string,
+    @Req() request: FastifyRequest,
+  ) {
+    const { tenantId } = await this.requireSyntheticCamera(request, id);
+    if (!await this.database.zoneEntryRules.remove(tenantId, id, ruleId)) {
+      throw new NotFoundException('Rule not found.');
+    }
   }
 
   @Put(':id/zone-entry-rules/:ruleId/enabled')

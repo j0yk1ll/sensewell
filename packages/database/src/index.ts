@@ -14,6 +14,12 @@ type Observation = Omit<typeof replayObservations.$inferInsert, 'tenantId' | 'ev
 type ActiveRule = RuleInput & { id: string; revision: number; zoneName: string; points: ZoneInput['points'] };
 type ZoneInput = Pick<typeof cameraZones.$inferInsert, 'name' | 'points'>;
 
+async function lockRuleZone(tx: TenantTransaction, tenantId: string, cameraId: string, zoneId: string) {
+  const [zone] = await tx.select({ id: cameraZones.id }).from(cameraZones)
+    .where(and(zoneCamera(tenantId, cameraId), eq(cameraZones.id, zoneId))).for('key share');
+  return zone;
+}
+
 function zoneCamera(tenantId: string, cameraId: string) {
   return and(eq(cameraZones.tenantId, tenantId), eq(cameraZones.cameraId, cameraId));
 }
@@ -66,6 +72,7 @@ export function createDatabase({ max }: { max?: number } = {}) {
 
   const historyFields = {
     id: replayZoneEntries.eventId,
+    direction: replayZoneEntries.direction,
     cameraName: cameras.name,
     zoneName: sql<string>`${replayZoneEntries.zone}->>'name'`,
     ruleName: replayZoneEntries.ruleName,
@@ -160,12 +167,25 @@ export function createDatabase({ max }: { max?: number } = {}) {
       },
       async add(tenantId: string, cameraId: string, input: RuleInput) {
         const [rule] = await forTenant(tenantId, async (tx) => {
-          const [zone] = await tx.select({ id: cameraZones.id }).from(cameraZones)
-            .where(and(zoneCamera(tenantId, cameraId), eq(cameraZones.id, input.zoneId))).for('key share');
-          if (!zone) return [];
+          if (!await lockRuleZone(tx, tenantId, cameraId, input.zoneId)) return [];
           return tx.insert(zoneEntryRules).values({ ...input, tenantId, cameraId }).returning(ruleFields);
         });
         return rule;
+      },
+      async update(tenantId: string, cameraId: string, id: string, input: RuleInput) {
+        const [rule] = await forTenant(tenantId, async (tx) => {
+          if (!await lockRuleZone(tx, tenantId, cameraId, input.zoneId)) return [];
+          return tx.update(zoneEntryRules).set({
+            ...input,
+            revision: sql`${zoneEntryRules.revision} + 1`,
+          }).where(and(ruleScope(tenantId, cameraId), eq(zoneEntryRules.id, id))).returning(ruleFields);
+        });
+        return rule;
+      },
+      async remove(tenantId: string, cameraId: string, id: string) {
+        const [rule] = await forTenant(tenantId, (tx) => tx.delete(zoneEntryRules)
+          .where(and(ruleScope(tenantId, cameraId), eq(zoneEntryRules.id, id))).returning({ id: zoneEntryRules.id }));
+        return Boolean(rule);
       },
       async setEnabled(tenantId: string, cameraId: string, id: string, enabled: boolean) {
         const [rule] = await forTenant(tenantId, (tx) => tx.update(zoneEntryRules).set({
@@ -198,7 +218,7 @@ export function createDatabase({ max }: { max?: number } = {}) {
       recordForReplay(
         tenantId: string,
         frame: Observation & { passNumber: number; occurredAt: Date; jpeg: Buffer },
-        evaluate: (rules: ActiveRule[]) => { rule: ActiveRule; personIndex: number }[],
+        evaluate: (rules: ActiveRule[]) => { rule: ActiveRule; personIndex: number; direction: (typeof replayZoneEntries.$inferSelect)['direction'] }[],
       ) {
         const { cameraId, passId, passNumber, sourceMs, people, occurredAt, jpeg } = frame;
         return forTenant(tenantId, async (tx) => {
@@ -214,18 +234,19 @@ export function createDatabase({ max }: { max?: number } = {}) {
             eq(cameraZones.tenantId, zoneEntryRules.tenantId),
             eq(cameraZones.cameraId, zoneEntryRules.cameraId),
             eq(cameraZones.id, zoneEntryRules.zoneId),
-          )).where(and(ruleScope(tenantId, cameraId), eq(zoneEntryRules.enabled, true)));
+          )).where(and(ruleScope(tenantId, cameraId), eq(zoneEntryRules.enabled, true)))
+            .for('share', { of: zoneEntryRules });
 
-          const entries = evaluate(rules);
+          const crossings = evaluate(rules);
           const [saved] = await tx.insert(replayObservations).values({
             tenantId, cameraId, passId, sourceMs, people,
-            eventJpeg: entries.length ? jpeg.toString('base64') : null,
+            eventJpeg: crossings.length ? jpeg.toString('base64') : null,
           }).onConflictDoNothing().returning({ sourceMs: replayObservations.sourceMs });
-          if (!saved || !entries.length) return;
+          if (!saved || !crossings.length) return;
 
-          const evidence = entries.map(({ rule, personIndex }) => ({
+          const evidence = crossings.map(({ rule, personIndex, direction }) => ({
             eventId: randomUUID(), tenantId, cameraId, passId, passNumber, sourceMs,
-            ruleId: rule.id, ruleName: rule.name, personIndex,
+            ruleId: rule.id, ruleName: rule.name, personIndex, direction,
             zone: { id: rule.zoneId, name: rule.zoneName, points: rule.points },
           }));
           await tx.insert(operationalEvents).values(evidence.map(({ eventId }) => ({ id: eventId, tenantId, occurredAt })));

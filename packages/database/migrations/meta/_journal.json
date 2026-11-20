@@ -57,6 +57,13 @@
       "when": 1795197418377,
       "tag": "0007_replay_zone_entries",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795210347270,
+      "tag": "0008_zone_crossing_direction",
+      "breakpoints": true
     }
   ]
 }

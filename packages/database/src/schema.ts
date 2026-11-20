@@ -210,10 +210,12 @@ export const replayZoneEntries = pgTable('replay_zone_entries', {
   sourceMs: integer('source_ms').notNull(),
   ruleId: uuid('rule_id').notNull(),
   ruleName: text('rule_name').notNull(),
+  direction: text({ enum: ['entry', 'exit'] }).default('entry').notNull(),
   zone: jsonb().$type<{ id: string; name: string; points: (typeof cameraZones.$inferSelect)['points'] }>().notNull(),
   personIndex: integer('person_index').notNull(),
 }, (entry) => [
   tenantIsolation(entry.tenantId),
+  check('replay_zone_entry_direction', sql`${entry.direction} in ('entry', 'exit')`),
   foreignKey({
     name: 'replay_zone_entries_event_fk',
     columns: [entry.tenantId, entry.eventId],

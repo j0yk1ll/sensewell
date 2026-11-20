@@ -22,9 +22,9 @@ Compose starts PostgreSQL and the detector service, applies the Drizzle migratio
 1. Create an operator account and sign in. Each account has its own camera workspace.
 2. Enter a camera name and upload an H.264 MP4 clip up to 512 MiB. Select the camera to reopen its source preview, then scrub the preview timeline to inspect a frame.
 3. Choose **Draw zone**, place the corners of the area on the preview, enter a name, and choose **Save zone**. You can save multiple zones. Use **Edit** beside a zone to rename it or redraw its outline, or **Remove** to delete that zone.
-4. Under **Person zone-entry rules**, choose the saved zone, enter a rule name and minimum detection confidence, and choose **Create rule**. Choose **Enable rule** to start recording confirmed entries on replay.
+4. Under **Person zone rules**, choose the saved zone, enter a rule name and minimum detection confidence, and choose **Create rule**. Choose **Enable rule** to record confirmed entries and exits during replay. Use **Edit** to change the rule’s name, saved zone, or confidence. **Remove** stops the rule and keeps its past events in history.
 5. Select **Loop replay** if needed, then choose **Start replay**. Replay shows the source position, pass number, person detections with confidence scores, and how many frames in that pass have been analyzed. Use **Show person detections** to toggle the overlay. **Stop replay** returns to the source preview.
-6. Under **Event history**, choose **Open evidence** to inspect the original replay pass, the analyzed crossing frame with its confidence, and the source clip at the same timestamp.
+6. Under **Event history**, choose **Open evidence** to inspect the original replay pass, the analyzed entry or exit frame with its confidence, and the source clip at the same timestamp.
 
 See the [Warehouse replay walkthrough](docs/warehouse-zone-entry.md) for the annotated crossing and timing results.
 

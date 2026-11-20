@@ -168,7 +168,7 @@ export class ReplayService implements OnModuleDestroy {
         await this.database.observations.recordForReplay(
           tenantId, { cameraId, passId, passNumber, sourceMs, people, occurredAt, jpeg },
           (rules) => zoneEntries.observe(sourceMs, people, rules)
-            .map(({ rule, person }) => ({ rule, personIndex: people.indexOf(person) })),
+            .map(({ rule, person, direction }) => ({ rule, direction, personIndex: people.indexOf(person) })),
         );
       } catch {
         zoneEntries.reset();

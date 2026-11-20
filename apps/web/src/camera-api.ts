@@ -107,6 +107,14 @@ export const cameraApi = {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
     });
   },
+  updateRule(id: string, ruleId: string, input: ZoneEntryRuleInput) {
+    return request(`${cameraPath(id)}/zone-entry-rules/${ruleId}`, zoneEntryRule, 'Could not save the rule.', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+    });
+  },
+  async removeRule(id: string, ruleId: string) {
+    await checkedRequest(`${cameraPath(id)}/zone-entry-rules/${ruleId}`, 'Could not remove the rule.', { method: 'DELETE' });
+  },
   setRuleEnabled(id: string, ruleId: string, enabled: boolean) {
     return request(`${cameraPath(id)}/zone-entry-rules/${ruleId}/enabled`, zoneEntryRule, 'Could not update the rule.', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }),

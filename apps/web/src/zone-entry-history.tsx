@@ -26,19 +26,19 @@ export function ZoneEntryHistory({ id, tenantId, replayActive }: {
   return (
     <Card className="gap-4 px-5 sm:px-6">
       <h3 className="text-lg font-semibold">Event history</h3>
-      {selected && <EntryEvidence key={selected} id={id} tenantId={tenantId} eventId={selected} onClose={() => {
+      {selected && <CrossingEvidence key={selected} id={id} tenantId={tenantId} eventId={selected} onClose={() => {
         setSelected(undefined);
         openButton.current?.focus();
       }} />}
       {history.isPending && <p role="status">Loading event history…</p>}
       {history.isError && <p className="error" role="alert">{history.error.message}</p>}
-      {history.data?.length === 0 && <p className="text-sm text-slate-600">No confirmed person zone entries yet.</p>}
+      {history.data?.length === 0 && <p className="text-sm text-slate-600">No confirmed zone entries or exits yet.</p>}
       {!!history.data?.length && <ul className="divide-y border-t">
         {history.data.map((event) => (
           <li key={event.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
             <div className="min-w-0 wrap-anywhere">
               <p className="font-medium">{event.ruleName}</p>
-              <p className="text-sm text-slate-600">{event.cameraName} · {event.zoneName} · Confirmed zone entry</p>
+              <p className="text-sm text-slate-600">{event.cameraName} · {event.zoneName} · Confirmed zone {event.direction}</p>
               <p className="text-sm tabular-nums text-slate-600">
                 <time dateTime={event.occurredAt}>{new Date(event.occurredAt).toLocaleString()}</time>
                 {' · '}<span title={event.passId}>{replayPosition(event)}</span>
@@ -56,7 +56,7 @@ export function ZoneEntryHistory({ id, tenantId, replayActive }: {
   );
 }
 
-function EntryEvidence({ id, tenantId, eventId, onClose }: {
+function CrossingEvidence({ id, tenantId, eventId, onClose }: {
   id: string; tenantId: string; eventId: string; onClose: () => void;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
@@ -73,9 +73,9 @@ function EntryEvidence({ id, tenantId, eventId, onClose }: {
   const confidence = event && `Person ${Math.round(event.person.confidence * 100)}% confidence`;
 
   return (
-    <section className="grid gap-3 rounded-md border bg-slate-50 p-3 sm:p-4" aria-label="Zone-entry evidence">
+    <section className="grid gap-3 rounded-md border bg-slate-50 p-3 sm:p-4" aria-label="Zone crossing evidence">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 ref={heading} tabIndex={-1} className="font-semibold">Crossing evidence</h4>
+        <h4 ref={heading} tabIndex={-1} className="font-semibold">{event?.direction === 'exit' ? 'Zone exit evidence' : event ? 'Zone entry evidence' : 'Crossing evidence'}</h4>
         <Button type="button" variant="outline" onClick={onClose}>Close evidence</Button>
       </div>
       {evidence.isPending && <p role="status">Loading crossing evidence…</p>}
@@ -87,7 +87,7 @@ function EntryEvidence({ id, tenantId, eventId, onClose }: {
           <figure className="min-w-0">
             <div ref={image} className="relative">
               <img className="block w-full" src={`data:image/jpeg;base64,${event.jpeg}`}
-                alt="Source frame at the confirmed zone entry"
+                alt={`Source frame at the confirmed zone ${event.direction}`}
                 onLoad={({ currentTarget }) => setSourceSize({
                   width: currentTarget.naturalWidth, height: currentTarget.naturalHeight,
                 })} />

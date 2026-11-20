@@ -14,9 +14,14 @@ export const zoneEntryRule = zoneEntryRuleInput.extend({
   id: z.uuid(),
   enabled: z.boolean(),
 });
+export type ZoneEntryRule = z.infer<typeof zoneEntryRule>;
 export const zoneEntryRuleList = z.array(zoneEntryRule);
 
+const zoneCrossingDirection = z.enum(['entry', 'exit']);
+export type ZoneCrossingDirection = z.infer<typeof zoneCrossingDirection>;
+
 const zoneEntryEvent = z.object({
+  direction: zoneCrossingDirection.default('entry'),
   id: z.uuid(),
   cameraName: z.string(),
   zoneName: z.string(),
