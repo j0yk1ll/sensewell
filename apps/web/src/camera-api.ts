@@ -1,3 +1,4 @@
+import { zoneEntryEvidence, zoneEntryHistory, zoneEntryRule, zoneEntryRuleList, type ZoneEntryRuleInput } from '@sensewell/contracts';
 import { cameraEndpointSettings, cameraList, cameraZone, cameraZoneList, captureStatus, ipCamera, recordingList, replayImage, replayStatus, syntheticCamera, type CameraZoneInput, type IpCameraInput } from '@sensewell/contracts';
 
 export class CameraApiError extends Error {
@@ -98,6 +99,25 @@ export const cameraApi = {
   async removeZone(id: string, zoneId: string) {
     await checkedRequest(zonePath(id, zoneId), 'Could not remove the zone. Try again.', { method: 'DELETE' });
   },
+  rules(id: string, signal: AbortSignal) {
+    return request(`${cameraPath(id)}/zone-entry-rules`, zoneEntryRuleList, 'Could not load zone-entry rules.', { signal });
+  },
+  addRule(id: string, input: ZoneEntryRuleInput) {
+    return request(`${cameraPath(id)}/zone-entry-rules`, zoneEntryRule, 'Could not save the rule.', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+    });
+  },
+  setRuleEnabled(id: string, ruleId: string, enabled: boolean) {
+    return request(`${cameraPath(id)}/zone-entry-rules/${ruleId}/enabled`, zoneEntryRule, 'Could not update the rule.', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }),
+    });
+  },
+  eventHistory(id: string, signal: AbortSignal) {
+    return request(`${cameraPath(id)}/zone-entry-events`, zoneEntryHistory, 'Could not load event history.', { signal });
+  },
+  eventEvidence(id: string, eventId: string, signal: AbortSignal) {
+    return request(`${cameraPath(id)}/zone-entry-events/${eventId}`, zoneEntryEvidence, 'Could not load event evidence.', { signal });
+  },
   async *replayFrames(id: string, signal: AbortSignal) {
     const response = await checkedRequest(`${cameraPath(id)}/replay/frames`, 'Could not load replay footage.', { signal });
     if (!response.body) throw new Error('Replay footage is unavailable.');
@@ -141,6 +161,14 @@ export function cameraZoneQuery(id: string, tenantId: string) {
   return {
     queryKey: ['camera-zones', tenantId, id],
     queryFn: ({ signal }: { signal: AbortSignal }) => cameraApi.zones(id, signal),
+    retry: false,
+  };
+}
+
+export function zoneEntryRuleQuery(id: string, tenantId: string) {
+  return {
+    queryKey: ['zone-entry-rules', tenantId, id],
+    queryFn: ({ signal }: { signal: AbortSignal }) => cameraApi.rules(id, signal),
     retry: false,
   };
 }

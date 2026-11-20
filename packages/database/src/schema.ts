@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, check, foreignKey, index, integer, jsonb, pgPolicy, pgRole, pgTable, primaryKey, text, timestamp, unique, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { boolean, check, doublePrecision, foreignKey, index, integer, jsonb, pgPolicy, pgRole, pgTable, primaryKey, text, timestamp, unique, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 const applicationRole = pgRole('sensewell_app').existing();
 
@@ -10,7 +10,7 @@ export const operationalEvents = pgTable(
     tenantId: uuid('tenant_id').notNull(),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
   },
-  (event) => [tenantIsolation(event.tenantId)],
+  (event) => [tenantIsolation(event.tenantId), unique().on(event.tenantId, event.id)],
 ).enableRLS();
 
 function tenantIsolation(tenantId: AnyPgColumn) {
@@ -108,7 +108,7 @@ export const cameraZones = pgTable('camera_zones', {
     columns: [zone.tenantId, zone.cameraId],
     foreignColumns: [cameras.tenantId, cameras.id],
   }).onDelete('cascade'),
-  index().on(zone.tenantId, zone.cameraId),
+  unique().on(zone.tenantId, zone.cameraId, zone.id),
 ]).enableRLS();
 
 export const replayPasses = pgTable('replay_passes', {
@@ -131,6 +131,7 @@ export const replayObservations = pgTable('replay_observations', {
   cameraId: uuid('camera_id').notNull(),
   passId: uuid('pass_id').notNull(),
   sourceMs: integer('source_ms').notNull(),
+  eventJpeg: text('event_jpeg'),
   people: jsonb().$type<{ box: [number, number, number, number]; confidence: number }[]>().notNull(),
 }, (frame) => [
   tenantIsolation(frame.tenantId),
@@ -179,3 +180,49 @@ export const cameraEndpoints = pgTable('camera_endpoints', {
 export const cameraEndpointImport = pgTable('camera_endpoint_import', {
   id: integer().primaryKey(),
 }, (state) => [check('camera_endpoint_import_singleton', sql`${state.id} = 1`)]);
+
+export const zoneEntryRules = pgTable('zone_entry_rules', {
+  id: uuid().defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  cameraId: uuid('camera_id').notNull(),
+  zoneId: uuid('zone_id').notNull(),
+  name: text().notNull(),
+  minimumConfidence: doublePrecision('minimum_confidence').notNull(),
+  enabled: boolean().default(false).notNull(),
+  revision: integer().default(0).notNull(),
+}, (rule) => [
+  tenantIsolation(rule.tenantId),
+  foreignKey({
+    name: 'zone_entry_rules_zone_fk',
+    columns: [rule.tenantId, rule.cameraId, rule.zoneId],
+    foreignColumns: [cameraZones.tenantId, cameraZones.cameraId, cameraZones.id],
+  }).onDelete('cascade'),
+  index().on(rule.tenantId, rule.cameraId, rule.zoneId),
+  check('zone_entry_rule_confidence', sql`${rule.minimumConfidence} between 0 and 1`),
+]).enableRLS();
+
+export const replayZoneEntries = pgTable('replay_zone_entries', {
+  eventId: uuid('event_id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  cameraId: uuid('camera_id').notNull(),
+  passId: uuid('pass_id').notNull(),
+  passNumber: integer('pass_number').notNull(),
+  sourceMs: integer('source_ms').notNull(),
+  ruleId: uuid('rule_id').notNull(),
+  ruleName: text('rule_name').notNull(),
+  zone: jsonb().$type<{ id: string; name: string; points: (typeof cameraZones.$inferSelect)['points'] }>().notNull(),
+  personIndex: integer('person_index').notNull(),
+}, (entry) => [
+  tenantIsolation(entry.tenantId),
+  foreignKey({
+    name: 'replay_zone_entries_event_fk',
+    columns: [entry.tenantId, entry.eventId],
+    foreignColumns: [operationalEvents.tenantId, operationalEvents.id],
+  }),
+  foreignKey({
+    name: 'replay_zone_entries_observation_fk',
+    columns: [entry.tenantId, entry.cameraId, entry.passId, entry.sourceMs],
+    foreignColumns: [replayObservations.tenantId, replayObservations.cameraId, replayObservations.passId, replayObservations.sourceMs],
+  }),
+  index().on(entry.tenantId, entry.cameraId),
+]).enableRLS();

@@ -8,6 +8,8 @@ export const personDetection = z.object({
   confidence: coordinate,
 });
 
+export type PersonDetection = z.infer<typeof personDetection>;
+
 export const personDetections = z.array(personDetection).max(300);
 
 export const replayFrameAnalysis = z.discriminatedUnion('state', [

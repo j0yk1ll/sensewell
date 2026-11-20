@@ -4,7 +4,7 @@ import test from 'node:test';
 import { sql } from 'drizzle-orm';
 import { Client } from 'pg';
 import { migrateDatabase } from '../dist/migrate.js';
-import { cameraRecordings, cameraZones, createDatabase, normalizeCameraEndpoint, operationalEvents } from '../dist/index.js';
+import { cameraRecordings, cameraZones, createDatabase, normalizeCameraEndpoint, operationalEvents, replayZoneEntries, zoneEntryRules } from '../dist/index.js';
 
 test('PostgreSQL isolates operational events under the application role', async (t) => {
   await migrateDatabase();
@@ -169,4 +169,67 @@ test('camera approvals accept RTSP URLs and keep only the endpoint', () => {
   assert.equal(normalizeCameraEndpoint('camera.test/live'), undefined);
   assert.equal(normalizeCameraEndpoint('https://camera.test/live'), undefined);
   assert.equal(normalizeCameraEndpoint('rtsp://user:pass@camera.test/live'), undefined);
+});
+
+test('confirmed replay events retain private evidence from their original pass', async (t) => {
+  await migrateDatabase();
+
+  const database = createDatabase({ max: 1 });
+  t.after(() => database.close());
+
+  const tenant = randomUUID();
+  const otherTenant = randomUUID();
+  const cameraId = randomUUID();
+  const siblingId = randomUUID();
+  const camera = { name: 'Warehouse', durationMs: 1000, startOffsetMs: 0 };
+  await database.cameras.add(tenant, { ...camera, id: cameraId });
+  await database.cameras.add(tenant, { ...camera, id: siblingId });
+
+  const zone = await database.zones.add(tenant, cameraId, {
+    name: 'Rack side', points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }],
+  });
+  const input = { zoneId: zone.id, name: 'Rack-side entry', minimumConfidence: 0.5 };
+  assert.equal(await database.zoneEntryRules.add(tenant, siblingId, input), undefined);
+  assert.equal(await database.zoneEntryRules.add(otherTenant, cameraId, input), undefined);
+  const rule = await database.zoneEntryRules.add(tenant, cameraId, input);
+  assert.ok(rule);
+  assert.equal(rule.enabled, false);
+  assert.deepEqual(await database.zoneEntryRules.list(otherTenant, cameraId), []);
+  assert.deepEqual(await database.forTenant(otherTenant, (tx) => tx.select().from(zoneEntryRules)), []);
+  assert.equal(await database.zoneEntryRules.setEnabled(otherTenant, cameraId, rule.id, true), undefined);
+
+  const passId = randomUUID();
+  await database.cameras.recordPass(tenant, { cameraId, id: passId });
+  const otherPassId = randomUUID();
+  await database.cameras.recordPass(tenant, { cameraId, id: otherPassId });
+  const person = { box: [0.2, 0.3, 0.4, 0.5] as [number, number, number, number], confidence: 0.85 };
+  const jpeg = Buffer.from('sample frame bytes');
+  const frame = { cameraId, passId, passNumber: 1, sourceMs: 200, people: [person], occurredAt: new Date(), jpeg };
+  await database.observations.recordForReplay(tenant, { ...frame, sourceMs: 100 }, (rules) => {
+    assert.deepEqual(rules, []);
+    return [];
+  });
+  assert.equal((await database.zoneEntryRules.setEnabled(tenant, cameraId, rule.id, true))?.enabled, true);
+  await database.observations.recordForReplay(tenant, frame, (rules) => rules.map((rule) => ({ rule, personIndex: 0 })));
+  await database.observations.recordForReplay(tenant, { ...frame, passId: otherPassId, passNumber: 2, people: [] }, () => []);
+  await database.observations.recordForReplay(tenant, frame, (rules) => rules.map((rule) => ({ rule, personIndex: 0 })));
+
+  const history = await database.zoneEntries.history(tenant, cameraId);
+  assert.equal(history.length, 1);
+  const [event] = history;
+  assert.ok(event);
+  assert.deepEqual(event, {
+    id: event.id, cameraName: camera.name, zoneName: zone.name, ruleName: rule.name,
+    occurredAt: frame.occurredAt, passId, passNumber: 1, sourceMs: 200,
+  });
+  assert.deepEqual(await database.zoneEntries.history(otherTenant, cameraId), []);
+  assert.deepEqual(await database.forTenant(otherTenant, (tx) => tx.select().from(replayZoneEntries)), []);
+  assert.equal(await database.zoneEntries.evidence(otherTenant, cameraId, event.id), undefined);
+  assert.equal(await database.zoneEntries.evidence(tenant, siblingId, event.id), undefined);
+
+  assert.equal(await database.zones.remove(tenant, cameraId, zone.id), true);
+  assert.deepEqual(await database.zoneEntryRules.list(tenant, cameraId), []);
+  assert.deepEqual(await database.zoneEntries.evidence(tenant, cameraId, event.id), {
+    ...event, zone, person, jpeg: jpeg.toString('base64'),
+  });
 });

@@ -10,7 +10,8 @@
     "build": "tsc",
     "dev": "tsc-watch --onSuccess \"node dist/main.js\"",
     "start": "node dist/main.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "@fastify/static": "^10.1.2",

@@ -6,6 +6,7 @@ import { ClipStorage } from './clip-storage.js';
 import { DatabaseService } from './database.service.js';
 import { detectPeople, replayDisplayDelayMs } from './replay-detector.js';
 import { jpegPart, replayFrameIntervalMs, replayFrames, type ReplayFrame } from './replay-source.js';
+import { ZoneEntryEvaluator } from './zone-entry.js';
 
 type DisplayedFrame = ReplayFrame & Omit<ReplayImage, 'jpeg'>;
 
@@ -106,6 +107,7 @@ export class ReplayService implements OnModuleDestroy {
         const passId = randomUUID();
         const currentPass = ++passNumber;
         let analyzedFrames = 0;
+        const zoneEntries = new ZoneEntryEvaluator();
         await this.database.cameras.recordPass(tenantId, { cameraId: camera.id, id: passId });
         signal.throwIfAborted();
 
@@ -115,7 +117,7 @@ export class ReplayService implements OnModuleDestroy {
           let analysis: ReplayFrameAnalysis = { state: 'skipped' };
           if (!pendingAnalysis) {
             analysis = { state: 'delayed' };
-            pendingAnalysis = this.analyze(tenantId, frame, signal).then((result) => {
+            pendingAnalysis = this.analyze(tenantId, frame, currentPass, zoneEntries, signal).then((result) => {
               analysis = result;
               if (result.state === 'analyzed') analyzedFrames += 1;
             }).finally(() => { pendingAnalysis = undefined; });
@@ -151,12 +153,25 @@ export class ReplayService implements OnModuleDestroy {
     }
   }
 
-  private async analyze(tenantId: string, { jpeg, cameraId, passId, sourceMs }: ReplayFrame, signal: AbortSignal) {
+  private async analyze(
+    tenantId: string,
+    { jpeg, cameraId, passId, sourceMs }: ReplayFrame,
+    passNumber: number,
+    zoneEntries: ZoneEntryEvaluator,
+    signal: AbortSignal,
+  ) {
+    const occurredAt = new Date();
     const result = await detectPeople(jpeg, signal);
     if (result.state === 'analyzed' && !signal.aborted) {
+      const { people } = result;
       try {
-        await this.database.observations.add(tenantId, { cameraId, passId, sourceMs, people: result.people });
+        await this.database.observations.recordForReplay(
+          tenantId, { cameraId, passId, passNumber, sourceMs, people, occurredAt, jpeg },
+          (rules) => zoneEntries.observe(sourceMs, people, rules)
+            .map(({ rule, person }) => ({ rule, personIndex: people.indexOf(person) })),
+        );
       } catch {
+        zoneEntries.reset();
         this.logger.warn(`Could not record an observation for replay pass ${passId}`);
         return { state: 'unavailable' } as const;
       }

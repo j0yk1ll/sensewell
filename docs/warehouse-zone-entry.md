@@ -1,0 +1,47 @@
+# Warehouse_027 / Camera_0004 zone-entry check
+
+Replay the 60-second Warehouse_027 / Camera_0004 clip with the RF-DETR Small Warehouse model. Footage is licensed under CC BY 4.0. Sensewell adds the zone and detection overlays. [NVIDIA PhysicalAI-SmartSpaces source clip](https://huggingface.co/datasets/nvidia/PhysicalAI-SmartSpaces/blob/main/MTMC_Tracking_2026/test/Warehouse_027/videos/Camera_0004.mp4) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+
+## Annotated crossing
+
+Draw the **Rack-side floor** zone along the left side of the yellow tape as seen from the camera. Include the short stretch of floor past the end of the tape. These points are fractions of the source image measured from the top left, in drawing order.
+
+| Corner | X | Y |
+| --- | ---: | ---: |
+| Foreground left | .040 | .851 |
+| Near end of the tape | .332 | .996 |
+| Far end of the tape | .474 | .365 |
+| Far end extended | .487 | .326 |
+| Back edge near the racks | .412 | .326 |
+| Left edge behind the racks | .080 | .400 |
+| Left frame edge | .008 | .520 |
+
+Create **Rack-side entry** with a minimum confidence of **35%**, then enable it before starting replay at 1×. Follow the person in a light sweater and dark trousers who is walking away from the camera on the right side of the tape.
+
+| Source time | What to inspect |
+| --- | --- |
+| 0:13.500 | The person is on the aisle side at the far tip of the tape. The qualifying outside detection is 55%. |
+| 0:13.800 | The person steps left at the end of the tape toward the racks. The qualifying inside detection is 38%. This was the confirmed entry on replay pass 1 of the measured run. |
+| 0:14.100 | The person continues past the tape tip. The frame helps distinguish the entrant from the second person behind them. |
+
+In **Event history**, open **Rack-side entry** at **0:13.800**. The analyzed frame shows the saved zone and the entrant's box. The source clip opens at the same time. The pass number and ID identify the original replay pass if the clip loops. The event can land on a nearby sampled frame depending on when inference is available.
+
+## Rule behavior
+
+A person is inside when at least half of a horizontal line 2% up from the bottom of their detection box lies in the polygon. This places the comparison near their feet. The tracker requires a unique one-to-one match with at least 0.30 box intersection over union and can recover a match within 500 ms. An entry requires qualifying detections on consecutive analyzed frames at most 400 ms apart. This accounts for replay frames skipped while CPU inference is busy.
+
+A missing person or a detection below the rule's threshold leaves their position unknown. A new replay pass starts with fresh tracks. The detector emits detections from 25% confidence upward, and the rule's threshold applies to both detections that establish the entry.
+
+## Timing at 1×
+
+Measured on November 20, 2026 in Chrome on the local Intel Core i7-13620H demo workstation, with four ONNX Runtime CPU threads and one Synthetic Camera replay. Timing starts when Sensewell submits the paced crossing frame for analysis. The evidence measurement includes opening the event, loading the analyzed frame, and finishing the source video seek in Chrome.
+
+| Measure | Result |
+| --- | ---: |
+| Qualifying frame intake to history response containing the event | 0.273 s |
+| Qualifying frame intake to usable evidence in Chrome | 0.949 s |
+| Acceptance limit | 60 s |
+
+Processing throughput for the complete first pass was **3.31 analyzed frames/s**. Sensewell persisted 199 analyzed frames in 60.112 seconds of elapsed replay time. Replay itself ran at 1× and sampled the clip at up to 10 frames/s.
+
+The check also fetched the original pass's evidence after the loop advanced to pass 2. Requests from a separate signed-in tenant returned HTTP 404 for history, evidence, and the source clip.

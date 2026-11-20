@@ -50,6 +50,13 @@
       "when": 1795189243282,
       "tag": "0006_replay_observations",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795197418377,
+      "tag": "0007_replay_zone_entries",
+      "breakpoints": true
     }
   ]
 }

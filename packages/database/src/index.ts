@@ -1,13 +1,17 @@
-import { and, asc, eq, gte, isNotNull, isNull, lt, sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { and, asc, desc, eq, gte, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { requireEnv } from './require-env.js';
-import { authUser, cameraEndpointAdministrators, cameraEndpoints, cameraRecordings, cameras, cameraZones, operationalEvents, replayObservations, replayPasses } from './schema.js';
+import { authUser, cameraEndpointAdministrators, cameraEndpoints, cameraRecordings, cameras, cameraZones, operationalEvents, replayObservations, replayPasses, replayZoneEntries, zoneEntryRules } from './schema.js';
 
 export { normalizeCameraEndpoint, streamEndpoint } from './camera-endpoint.js';
-export { cameraRecordings, cameras, cameraZones, operationalEvents, replayObservations, replayPasses } from './schema.js';
+export { cameraRecordings, cameras, cameraZones, operationalEvents, replayObservations, replayPasses, replayZoneEntries, zoneEntryRules } from './schema.js';
 
 type TenantTransaction = Parameters<Parameters<ReturnType<typeof drizzle>['transaction']>[0]>[0];
+type RuleInput = Pick<typeof zoneEntryRules.$inferInsert, 'name' | 'zoneId' | 'minimumConfidence'>;
+type Observation = Omit<typeof replayObservations.$inferInsert, 'tenantId' | 'eventJpeg'>;
+type ActiveRule = RuleInput & { id: string; revision: number; zoneName: string; points: ZoneInput['points'] };
 type ZoneInput = Pick<typeof cameraZones.$inferInsert, 'name' | 'points'>;
 
 function zoneCamera(tenantId: string, cameraId: string) {
@@ -49,6 +53,40 @@ export function createDatabase({ max }: { max?: number } = {}) {
     name: cameraZones.name,
     points: cameraZones.points,
   };
+
+  const ruleFields = {
+    id: zoneEntryRules.id,
+    name: zoneEntryRules.name,
+    zoneId: zoneEntryRules.zoneId,
+    minimumConfidence: zoneEntryRules.minimumConfidence,
+    enabled: zoneEntryRules.enabled,
+  };
+  const ruleScope = (tenantId: string, cameraId: string) =>
+    and(eq(zoneEntryRules.tenantId, tenantId), eq(zoneEntryRules.cameraId, cameraId));
+
+  const historyFields = {
+    id: replayZoneEntries.eventId,
+    cameraName: cameras.name,
+    zoneName: sql<string>`${replayZoneEntries.zone}->>'name'`,
+    ruleName: replayZoneEntries.ruleName,
+    occurredAt: operationalEvents.occurredAt,
+    passId: replayZoneEntries.passId,
+    passNumber: replayZoneEntries.passNumber,
+    sourceMs: replayZoneEntries.sourceMs,
+  };
+  const entryScope = (tenantId: string, cameraId: string) =>
+    and(eq(replayZoneEntries.tenantId, tenantId), eq(replayZoneEntries.cameraId, cameraId));
+  const entryEvent = and(
+    eq(operationalEvents.tenantId, replayZoneEntries.tenantId),
+    eq(operationalEvents.id, replayZoneEntries.eventId),
+  );
+  const entryCamera = and(eq(cameras.tenantId, replayZoneEntries.tenantId), eq(cameras.id, replayZoneEntries.cameraId));
+  const entryObservation = and(
+    eq(replayObservations.tenantId, replayZoneEntries.tenantId),
+    eq(replayObservations.cameraId, replayZoneEntries.cameraId),
+    eq(replayObservations.passId, replayZoneEntries.passId),
+    eq(replayObservations.sourceMs, replayZoneEntries.sourceMs),
+  );
 
   return {
     authPool: pool,
@@ -115,10 +153,84 @@ export function createDatabase({ max }: { max?: number } = {}) {
         }
       },
     },
+    zoneEntryRules: {
+      list(tenantId: string, cameraId: string) {
+        return forTenant(tenantId, (tx) => tx.select(ruleFields).from(zoneEntryRules)
+          .where(ruleScope(tenantId, cameraId)).orderBy(asc(zoneEntryRules.name), asc(zoneEntryRules.id)));
+      },
+      async add(tenantId: string, cameraId: string, input: RuleInput) {
+        const [rule] = await forTenant(tenantId, async (tx) => {
+          const [zone] = await tx.select({ id: cameraZones.id }).from(cameraZones)
+            .where(and(zoneCamera(tenantId, cameraId), eq(cameraZones.id, input.zoneId))).for('key share');
+          if (!zone) return [];
+          return tx.insert(zoneEntryRules).values({ ...input, tenantId, cameraId }).returning(ruleFields);
+        });
+        return rule;
+      },
+      async setEnabled(tenantId: string, cameraId: string, id: string, enabled: boolean) {
+        const [rule] = await forTenant(tenantId, (tx) => tx.update(zoneEntryRules).set({
+          enabled,
+          revision: sql`case when ${zoneEntryRules.enabled} <> ${enabled} then ${zoneEntryRules.revision} + 1 else ${zoneEntryRules.revision} end`,
+        }).where(and(ruleScope(tenantId, cameraId), eq(zoneEntryRules.id, id))).returning(ruleFields));
+        return rule;
+      },
+    },
+    zoneEntries: {
+      history(tenantId: string, cameraId: string) {
+        return forTenant(tenantId, (tx) => tx.select(historyFields).from(replayZoneEntries)
+          .innerJoin(operationalEvents, entryEvent).innerJoin(cameras, entryCamera)
+          .where(entryScope(tenantId, cameraId))
+          .orderBy(desc(operationalEvents.occurredAt), desc(replayZoneEntries.eventId)).limit(100));
+      },
+      async evidence(tenantId: string, cameraId: string, id: string) {
+        const [row] = await forTenant(tenantId, (tx) => tx.select({
+          ...historyFields,
+          zone: replayZoneEntries.zone,
+          person: sql<Observation['people'][number]>`${replayObservations.people}->${replayZoneEntries.personIndex}`,
+          jpeg: replayObservations.eventJpeg,
+        }).from(replayZoneEntries).innerJoin(operationalEvents, entryEvent).innerJoin(cameras, entryCamera)
+          .innerJoin(replayObservations, entryObservation)
+          .where(and(entryScope(tenantId, cameraId), eq(replayZoneEntries.eventId, id))));
+        return row;
+      },
+    },
     observations: {
-      async add(tenantId: string, frame: Omit<typeof replayObservations.$inferInsert, 'tenantId'>) {
-        await forTenant(tenantId, (tx) => tx.insert(replayObservations)
-          .values({ ...frame, tenantId }).onConflictDoNothing());
+      recordForReplay(
+        tenantId: string,
+        frame: Observation & { passNumber: number; occurredAt: Date; jpeg: Buffer },
+        evaluate: (rules: ActiveRule[]) => { rule: ActiveRule; personIndex: number }[],
+      ) {
+        const { cameraId, passId, passNumber, sourceMs, people, occurredAt, jpeg } = frame;
+        return forTenant(tenantId, async (tx) => {
+          const rules = await tx.select({
+            id: zoneEntryRules.id,
+            zoneId: zoneEntryRules.zoneId,
+            name: zoneEntryRules.name,
+            minimumConfidence: zoneEntryRules.minimumConfidence,
+            revision: zoneEntryRules.revision,
+            zoneName: cameraZones.name,
+            points: cameraZones.points,
+          }).from(zoneEntryRules).innerJoin(cameraZones, and(
+            eq(cameraZones.tenantId, zoneEntryRules.tenantId),
+            eq(cameraZones.cameraId, zoneEntryRules.cameraId),
+            eq(cameraZones.id, zoneEntryRules.zoneId),
+          )).where(and(ruleScope(tenantId, cameraId), eq(zoneEntryRules.enabled, true)));
+
+          const entries = evaluate(rules);
+          const [saved] = await tx.insert(replayObservations).values({
+            tenantId, cameraId, passId, sourceMs, people,
+            eventJpeg: entries.length ? jpeg.toString('base64') : null,
+          }).onConflictDoNothing().returning({ sourceMs: replayObservations.sourceMs });
+          if (!saved || !entries.length) return;
+
+          const evidence = entries.map(({ rule, personIndex }) => ({
+            eventId: randomUUID(), tenantId, cameraId, passId, passNumber, sourceMs,
+            ruleId: rule.id, ruleName: rule.name, personIndex,
+            zone: { id: rule.zoneId, name: rule.zoneName, points: rule.points },
+          }));
+          await tx.insert(operationalEvents).values(evidence.map(({ eventId }) => ({ id: eventId, tenantId, occurredAt })));
+          await tx.insert(replayZoneEntries).values(evidence);
+        });
       },
       list(tenantId: string, { cameraId, passId, fromMs, toMs }: {
         cameraId: string; passId: string; fromMs: number; toMs: number;

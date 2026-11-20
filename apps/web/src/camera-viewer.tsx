@@ -8,8 +8,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
+import { formatClipTime } from '@/lib/utils';
 import { cameraApi } from './camera-api';
 import { ReplayVideo } from './replay-video';
+import { ZoneEntryRules } from './zone-entry-rules';
+import { ZoneEntryHistory } from './zone-entry-history';
 import { ZoneEditor } from './zone-editor';
 
 const replayLabel = {
@@ -20,11 +23,6 @@ const replayLabel = {
   finished: 'Replay finished',
   unavailable: 'Replay unavailable',
 };
-
-function clock(milliseconds: number) {
-  const seconds = Math.floor(milliseconds / 1000);
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-}
 
 export function CameraViewer({ camera, tenantId }: { camera: SyntheticCamera; tenantId: string }) {
   const viewer = useRef<HTMLDivElement>(null);
@@ -84,7 +82,7 @@ export function CameraViewer({ camera, tenantId }: { camera: SyntheticCamera; te
     onSettled: () => { void queryClient.invalidateQueries({ queryKey }); },
   });
 
-  return (
+  const replayViewer = (
     <Card ref={viewer} className="camera-viewer min-w-0 gap-0 overflow-hidden py-0" role="region" aria-labelledby="camera-title">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3 px-5 py-5 sm:px-6">
         <div className="min-w-0">
@@ -141,6 +139,14 @@ export function CameraViewer({ camera, tenantId }: { camera: SyntheticCamera; te
         </div>
       </div>
     </Card>
+  );
+
+  return (
+    <div className="grid min-w-0 gap-4">
+      {replayViewer}
+      <ZoneEntryRules id={camera.id} tenantId={tenantId} />
+      <ZoneEntryHistory id={camera.id} tenantId={tenantId} replayActive={active} />
+    </div>
   );
 }
 
@@ -200,8 +206,8 @@ function FootageTimeline({ durationMs, positionMs, onSeek }: {
   onSeek?: (positionMs: number) => void;
 }) {
   const id = useId();
-  const position = clock(positionMs);
-  const duration = clock(durationMs);
+  const position = formatClipTime(positionMs);
+  const duration = formatClipTime(durationMs);
   const valueText = `${position} of ${duration}`;
 
   return (

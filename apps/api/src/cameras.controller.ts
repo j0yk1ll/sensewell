@@ -6,7 +6,7 @@ import {
   Param, ParseUUIDPipe, PayloadTooLargeException, Post, Put, Query, Req, Res,
   ServiceUnavailableException, UnsupportedMediaTypeException,
 } from '@nestjs/common';
-import { cameraName, cameraZoneInput, ipCameraInput, maxCameraNameLength, maxClipBytes, maxClipMiB, replayOptions } from '@sensewell/contracts';
+import { cameraName, cameraZoneInput, ipCameraInput, maxCameraNameLength, maxClipBytes, maxClipMiB, replayOptions, zoneEntryRuleInput, zoneEntryRuleToggle } from '@sensewell/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AuthService } from './auth.js';
 import { ClipStorage } from './clip-storage.js';
@@ -190,6 +190,62 @@ export class CamerasController {
     if (!await this.database.zones.remove(tenantId, camera.id, zoneId)) {
       throw new NotFoundException('Camera zone not found.');
     }
+  }
+
+  @Get(':id/zone-entry-rules')
+  @Header('Cache-Control', 'private, no-store')
+  async listZoneEntryRules(@Param('id', ParseUUIDPipe) id: string, @Req() request: FastifyRequest) {
+    const { tenantId } = await this.requireSyntheticCamera(request, id);
+    return this.database.zoneEntryRules.list(tenantId, id);
+  }
+
+  @Post(':id/zone-entry-rules')
+  @Header('Cache-Control', 'private, no-store')
+  async addZoneEntryRule(
+    @Param('id', ParseUUIDPipe) id: string, @Req() request: FastifyRequest, @Body() body: unknown,
+  ) {
+    const { tenantId } = await this.requireSyntheticCamera(request, id);
+    const input = zoneEntryRuleInput.safeParse(body);
+    if (!input.success) throw new BadRequestException('Choose a saved zone, a rule name, and a minimum confidence from 0 to 100%.');
+    const rule = await this.database.zoneEntryRules.add(tenantId, id, input.data);
+    if (!rule) throw new NotFoundException('Camera zone not found.');
+    return rule;
+  }
+
+  @Put(':id/zone-entry-rules/:ruleId/enabled')
+  @Header('Cache-Control', 'private, no-store')
+  async setZoneEntryRuleEnabled(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('ruleId', ParseUUIDPipe) ruleId: string,
+    @Req() request: FastifyRequest,
+    @Body() body: unknown,
+  ) {
+    const { tenantId } = await this.requireSyntheticCamera(request, id);
+    const input = zoneEntryRuleToggle.safeParse(body);
+    if (!input.success) throw new BadRequestException('Specify whether the rule is enabled.');
+    const rule = await this.database.zoneEntryRules.setEnabled(tenantId, id, ruleId, input.data.enabled);
+    if (!rule) throw new NotFoundException('Zone-entry rule not found.');
+    return rule;
+  }
+
+  @Get(':id/zone-entry-events')
+  @Header('Cache-Control', 'private, no-store')
+  async zoneEntryHistory(@Param('id', ParseUUIDPipe) id: string, @Req() request: FastifyRequest) {
+    const { tenantId } = await this.requireSyntheticCamera(request, id);
+    return this.database.zoneEntries.history(tenantId, id);
+  }
+
+  @Get(':id/zone-entry-events/:eventId')
+  @Header('Cache-Control', 'private, no-store')
+  async zoneEntryEvidence(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Req() request: FastifyRequest,
+  ) {
+    const { tenantId } = await this.requireSyntheticCamera(request, id);
+    const evidence = await this.database.zoneEntries.evidence(tenantId, id, eventId);
+    if (!evidence?.jpeg) throw new NotFoundException('Event evidence not found.');
+    return evidence;
   }
 
   @Get(':id/media')
