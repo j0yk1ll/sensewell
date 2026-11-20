@@ -1,9 +1,10 @@
-import type { PersonDetection, ZoneCrossingDirection, ZonePoint } from '@sensewell/contracts';
+import type { PersonDetection, ZoneCrossingDirection, ZonePoint, ZoneRuleEventType } from '@sensewell/contracts';
 
 interface EntryRule {
   id: string;
   revision: number;
   minimumConfidence: number;
+  eventType: ZoneRuleEventType;
   points: ZonePoint[];
 }
 
@@ -78,7 +79,8 @@ export class ZoneEntryEvaluator {
         zones.set(rule.id, { inside, version });
         const before = previous?.zones.get(rule.id);
         if (continuous && before?.version === version && before.inside !== inside) {
-          crossings.push({ rule, person, direction: inside ? 'entry' : 'exit' });
+          const direction = inside ? 'entry' : 'exit';
+          if (rule.eventType === 'both' || rule.eventType === direction) crossings.push({ rule, person, direction });
         }
       }
       this.tracks.push({ person, sourceMs, zones });

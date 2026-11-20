@@ -2,8 +2,12 @@ import { z } from 'zod';
 import { cameraZone, cameraZoneInput } from './camera-zone.js';
 import { personDetection } from './replay-analysis.js';
 
+export const zoneRuleEventType = z.enum(['entry', 'exit', 'both']);
+export type ZoneRuleEventType = z.infer<typeof zoneRuleEventType>;
+
 export const zoneEntryRuleInput = z.strictObject({
   zoneId: z.uuid(),
+  eventType: zoneRuleEventType.optional(),
   name: cameraZoneInput.shape.name,
   minimumConfidence: personDetection.shape.confidence,
 });
@@ -11,6 +15,7 @@ export type ZoneEntryRuleInput = z.infer<typeof zoneEntryRuleInput>;
 
 export const zoneEntryRuleToggle = z.strictObject({ enabled: z.boolean() });
 export const zoneEntryRule = zoneEntryRuleInput.extend({
+  eventType: zoneRuleEventType,
   id: z.uuid(),
   enabled: z.boolean(),
 });

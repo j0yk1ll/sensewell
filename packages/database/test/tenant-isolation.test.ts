@@ -194,6 +194,7 @@ test('confirmed replay events retain private evidence from their original pass',
   const rule = await database.zoneEntryRules.add(tenant, cameraId, input);
   assert.ok(rule);
   assert.equal(rule.enabled, false);
+  assert.equal(rule.eventType, 'both');
   assert.deepEqual(await database.zoneEntryRules.list(otherTenant, cameraId), []);
   assert.deepEqual(await database.forTenant(otherTenant, (tx) => tx.select().from(zoneEntryRules)), []);
   assert.equal(await database.zoneEntryRules.setEnabled(otherTenant, cameraId, rule.id, true), undefined);
@@ -228,7 +229,7 @@ test('confirmed replay events retain private evidence from their original pass',
   assert.equal(await database.zoneEntries.evidence(tenant, siblingId, event.id), undefined);
 
   const otherZone = await database.zones.add(tenant, cameraId, { name: 'New rack', points: zone.points });
-  const update = { zoneId: otherZone.id, name: 'Renamed rule', minimumConfidence: 0.35 };
+  const update = { zoneId: otherZone.id, name: 'Renamed rule', minimumConfidence: 0.35, eventType: 'exit' as const };
   assert.equal(await database.zoneEntryRules.update(otherTenant, cameraId, rule.id, update), undefined);
   assert.equal(await database.zoneEntryRules.update(tenant, siblingId, rule.id, update), undefined);
   assert.deepEqual(await database.zoneEntryRules.update(tenant, cameraId, rule.id, update), {
@@ -236,7 +237,10 @@ test('confirmed replay events retain private evidence from their original pass',
   });
   const exitFrame = { ...frame, sourceMs: 300, occurredAt: new Date(frame.occurredAt.getTime() + 100) };
   await database.observations.recordForReplay(tenant, exitFrame, (rules) =>
-    rules.map((rule) => ({ rule, personIndex: 0, direction: 'exit' })));
+    rules.map((rule) => {
+      assert.equal(rule.eventType, 'exit');
+      return { rule, personIndex: 0, direction: 'exit' };
+    }));
   const [exit, entry] = await database.zoneEntries.history(tenant, cameraId);
   assert.ok(exit);
   assert.equal(exit.direction, 'exit');

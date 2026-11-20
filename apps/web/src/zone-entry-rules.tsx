@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { maxZoneNameLength, type CameraZone, type ZoneEntryRule, type ZoneEntryRuleInput } from '@sensewell/contracts';
+import { maxZoneNameLength, zoneRuleEventType, type CameraZone, type ZoneEntryRule, type ZoneEntryRuleInput } from '@sensewell/contracts';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cameraApi, cameraZoneQuery, zoneEntryRuleQuery } from './camera-api';
+
+const eventTypeLabels = { entry: 'Entry only', exit: 'Exit only', both: 'Entry and exit' };
 
 export function ZoneEntryRules({ id, tenantId }: { id: string; tenantId: string }) {
   const client = useQueryClient();
@@ -64,7 +66,7 @@ export function ZoneEntryRules({ id, tenantId }: { id: string; tenantId: string 
             <div className="min-w-0 wrap-anywhere">
               <p className="font-medium">{rule.name}</p>
               <p className="text-sm text-slate-600">
-                {zones.data?.find((zone) => zone.id === rule.zoneId)?.name ?? 'Saved zone'} · {Math.round(rule.minimumConfidence * 100)}% minimum · {rule.enabled ? 'Enabled' : 'Disabled'}
+                {zones.data?.find((zone) => zone.id === rule.zoneId)?.name ?? 'Saved zone'} · {eventTypeLabels[rule.eventType]} · {Math.round(rule.minimumConfidence * 100)}% minimum · {rule.enabled ? 'Enabled' : 'Disabled'}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -119,6 +121,7 @@ function RuleForm({ id, zones, rule, onSaved, onCancel }: {
   const nameInput = useRef<HTMLInputElement>(null);
   const [zoneId, setZoneId] = useState(rule?.zoneId ?? '');
   const [name, setName] = useState(rule?.name ?? '');
+  const [eventType, setEventType] = useState<ZoneEntryRule['eventType']>(rule?.eventType ?? 'both');
   const [confidence, setConfidence] = useState(rule ? String(rule.minimumConfidence * 100) : '50');
   const selectedZone = zones.find((zone) => zone.id === zoneId) ?? zones[0];
   const save = useMutation({
@@ -135,7 +138,7 @@ function RuleForm({ id, zones, rule, onSaved, onCancel }: {
   return selectedZone && (
     <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => {
       event.preventDefault();
-      save.mutate({ zoneId: selectedZone.id, name, minimumConfidence: Number(confidence) / 100 });
+      save.mutate({ zoneId: selectedZone.id, name, eventType, minimumConfidence: Number(confidence) / 100 });
     }}>
       <div className="field min-w-36 flex-1">
         <Label htmlFor={`${prefix}-zone`}>Saved zone</Label>
@@ -148,6 +151,13 @@ function RuleForm({ id, zones, rule, onSaved, onCancel }: {
         <Label htmlFor={`${prefix}-name`}>Rule name</Label>
         <Input ref={nameInput} id={`${prefix}-name`} value={name} maxLength={maxZoneNameLength} required
           onChange={(event) => setName(event.target.value)} />
+      </div>
+      <div className="field">
+        <Label htmlFor={`${prefix}-event-type`}>Event type</Label>
+        <select id={`${prefix}-event-type`} className="h-9 rounded-md border border-input bg-white px-2 text-sm"
+          value={eventType} onChange={(event) => setEventType(zoneRuleEventType.parse(event.target.value))}>
+          {zoneRuleEventType.options.map((type) => <option key={type} value={type}>{eventTypeLabels[type]}</option>)}
+        </select>
       </div>
       <div className="field">
         <Label htmlFor={`${prefix}-confidence`}>Minimum confidence (%)</Label>

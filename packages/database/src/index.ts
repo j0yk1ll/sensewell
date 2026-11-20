@@ -9,9 +9,9 @@ export { normalizeCameraEndpoint, streamEndpoint } from './camera-endpoint.js';
 export { cameraRecordings, cameras, cameraZones, operationalEvents, replayObservations, replayPasses, replayZoneEntries, zoneEntryRules } from './schema.js';
 
 type TenantTransaction = Parameters<Parameters<ReturnType<typeof drizzle>['transaction']>[0]>[0];
-type RuleInput = Pick<typeof zoneEntryRules.$inferInsert, 'name' | 'zoneId' | 'minimumConfidence'>;
+type RuleInput = Pick<typeof zoneEntryRules.$inferInsert, 'name' | 'zoneId' | 'minimumConfidence' | 'eventType'>;
 type Observation = Omit<typeof replayObservations.$inferInsert, 'tenantId' | 'eventJpeg'>;
-type ActiveRule = RuleInput & { id: string; revision: number; zoneName: string; points: ZoneInput['points'] };
+type ActiveRule = Required<RuleInput> & { id: string; revision: number; zoneName: string; points: ZoneInput['points'] };
 type ZoneInput = Pick<typeof cameraZones.$inferInsert, 'name' | 'points'>;
 
 async function lockRuleZone(tx: TenantTransaction, tenantId: string, cameraId: string, zoneId: string) {
@@ -65,6 +65,7 @@ export function createDatabase({ max }: { max?: number } = {}) {
     name: zoneEntryRules.name,
     zoneId: zoneEntryRules.zoneId,
     minimumConfidence: zoneEntryRules.minimumConfidence,
+    eventType: zoneEntryRules.eventType,
     enabled: zoneEntryRules.enabled,
   };
   const ruleScope = (tenantId: string, cameraId: string) =>
@@ -227,6 +228,7 @@ export function createDatabase({ max }: { max?: number } = {}) {
             zoneId: zoneEntryRules.zoneId,
             name: zoneEntryRules.name,
             minimumConfidence: zoneEntryRules.minimumConfidence,
+            eventType: zoneEntryRules.eventType,
             revision: zoneEntryRules.revision,
             zoneName: cameraZones.name,
             points: cameraZones.points,

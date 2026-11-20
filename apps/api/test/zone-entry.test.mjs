@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { ZoneEntryEvaluator } from '../dist/zone-entry.js';
 
 const rule = {
-  id: 'rack-side', revision: 1, minimumConfidence: 0.5,
+  id: 'rack-side', revision: 1, minimumConfidence: 0.5, eventType: 'both',
   points: [{ x: 0.5, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0.5, y: 1 }],
 };
 const person = (x, confidence = 0.8) => ({ box: [x - 0.1, 0.2, x + 0.1, 0.6], confidence });
@@ -75,4 +75,20 @@ test('records a separate exit when the same person leaves the zone', () => {
   pass.observe(100, [inside], [rule]);
   assert.deepEqual(pass.observe(200, [outside], [rule]), [{ rule, person: outside, direction: 'exit' }]);
   assert.deepEqual(pass.observe(300, [outside], [rule]), []);
+});
+
+test('records only the directions selected by each rule', () => {
+  const pass = new ZoneEntryEvaluator();
+  const outside = person(0.48);
+  const inside = person(0.52);
+  const rules = [
+    { ...rule, id: 'entries', eventType: 'entry' },
+    { ...rule, id: 'exits', eventType: 'exit' },
+    { ...rule, id: 'both', eventType: 'both' },
+  ];
+  assert.deepEqual(pass.observe(0, [outside], rules), []);
+  assert.deepEqual(pass.observe(100, [inside], rules).map(({ rule, direction }) => [rule.id, direction]),
+    [['entries', 'entry'], ['both', 'entry']]);
+  assert.deepEqual(pass.observe(200, [outside], rules).map(({ rule, direction }) => [rule.id, direction]),
+    [['exits', 'exit'], ['both', 'exit']]);
 });

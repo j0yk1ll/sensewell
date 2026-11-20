@@ -64,6 +64,13 @@
       "when": 1795210347270,
       "tag": "0008_zone_crossing_direction",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795215674379,
+      "tag": "0009_zone_rule_event_type",
+      "breakpoints": true
     }
   ]
 }

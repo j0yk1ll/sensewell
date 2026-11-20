@@ -188,6 +188,7 @@ export const zoneEntryRules = pgTable('zone_entry_rules', {
   zoneId: uuid('zone_id').notNull(),
   name: text().notNull(),
   minimumConfidence: doublePrecision('minimum_confidence').notNull(),
+  eventType: text('event_type', { enum: ['entry', 'exit', 'both'] }).default('both').notNull(),
   enabled: boolean().default(false).notNull(),
   revision: integer().default(0).notNull(),
 }, (rule) => [
@@ -198,6 +199,7 @@ export const zoneEntryRules = pgTable('zone_entry_rules', {
     foreignColumns: [cameraZones.tenantId, cameraZones.cameraId, cameraZones.id],
   }).onDelete('cascade'),
   index().on(rule.tenantId, rule.cameraId, rule.zoneId),
+  check('zone_entry_rule_event_type', sql`${rule.eventType} in ('entry', 'exit', 'both')`),
   check('zone_entry_rule_confidence', sql`${rule.minimumConfidence} between 0 and 1`),
 ]).enableRLS();
 
