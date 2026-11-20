@@ -1,4 +1,4 @@
-import { cameraEndpointSettings, cameraList, cameraZone, cameraZoneList, captureStatus, ipCamera, recordingList, replayStatus, syntheticCamera, type CameraZoneInput, type IpCameraInput } from '@sensewell/contracts';
+import { cameraEndpointSettings, cameraList, cameraZone, cameraZoneList, captureStatus, ipCamera, recordingList, replayImage, replayStatus, syntheticCamera, type CameraZoneInput, type IpCameraInput } from '@sensewell/contracts';
 
 export class CameraApiError extends Error {
   constructor(readonly status: number, message: string) {
@@ -98,7 +98,27 @@ export const cameraApi = {
   async removeZone(id: string, zoneId: string) {
     await checkedRequest(zonePath(id, zoneId), 'Could not remove the zone. Try again.', { method: 'DELETE' });
   },
-  video: (id: string) => `${cameraPath(id)}/replay/video`,
+  async *replayFrames(id: string, signal: AbortSignal) {
+    const response = await checkedRequest(`${cameraPath(id)}/replay/frames`, 'Could not load replay footage.', { signal });
+    if (!response.body) throw new Error('Replay footage is unavailable.');
+    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffered = '';
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) {
+          if (buffered) throw new Error('Incomplete replay frame.');
+          return;
+        }
+        const lines = (buffered + value).split('\n');
+        buffered = lines.pop() ?? '';
+        for (const line of lines) yield replayImage.parse(JSON.parse(line));
+      }
+    } finally {
+      await reader.cancel().catch(() => undefined);
+      reader.releaseLock();
+    }
+  },
   status(id: string, signal: AbortSignal) {
     return request(`${cameraPath(id)}/replay`, replayStatus, 'Could not load replay status.', { signal });
   },

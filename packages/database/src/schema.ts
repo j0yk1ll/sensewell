@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, check, foreignKey, index, integer, jsonb, pgPolicy, pgRole, pgTable, text, timestamp, unique, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { boolean, check, foreignKey, index, integer, jsonb, pgPolicy, pgRole, pgTable, primaryKey, text, timestamp, unique, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 const applicationRole = pgRole('sensewell_app').existing();
 
@@ -123,7 +123,24 @@ export const replayPasses = pgTable('replay_passes', {
     columns: [pass.tenantId, pass.cameraId],
     foreignColumns: [cameras.tenantId, cameras.id],
   }),
-  index().on(pass.tenantId, pass.cameraId),
+  unique().on(pass.tenantId, pass.cameraId, pass.id),
+]).enableRLS();
+
+export const replayObservations = pgTable('replay_observations', {
+  tenantId: uuid('tenant_id').notNull(),
+  cameraId: uuid('camera_id').notNull(),
+  passId: uuid('pass_id').notNull(),
+  sourceMs: integer('source_ms').notNull(),
+  people: jsonb().$type<{ box: [number, number, number, number]; confidence: number }[]>().notNull(),
+}, (frame) => [
+  tenantIsolation(frame.tenantId),
+  primaryKey({ columns: [frame.tenantId, frame.cameraId, frame.passId, frame.sourceMs] }),
+  foreignKey({
+    name: 'replay_observations_pass_fk',
+    columns: [frame.tenantId, frame.cameraId, frame.passId],
+    foreignColumns: [replayPasses.tenantId, replayPasses.cameraId, replayPasses.id],
+  }),
+  check('replay_observation_source_ms', sql`${frame.sourceMs} >= 0`),
 ]).enableRLS();
 
 export const cameraRecordings = pgTable('camera_recordings', {

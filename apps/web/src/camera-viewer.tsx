@@ -8,9 +8,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
-import { cameraApi, cameraZoneQuery } from './camera-api';
+import { cameraApi } from './camera-api';
+import { ReplayVideo } from './replay-video';
 import { ZoneEditor } from './zone-editor';
-import { ZoneOverlay } from './zone-overlay';
 
 const replayLabel = {
   idle: 'Ready to replay',
@@ -102,10 +102,10 @@ export function CameraViewer({ camera, tenantId }: { camera: SyntheticCamera; te
 
       {showReplay
         ? <div className="footage-with-timeline grid">
-          <ReplayVideo key={replayVersion} id={camera.id} tenantId={tenantId} stopping={status?.state === 'stopping'} />
-          <FootageTimeline durationMs={camera.durationMs}
-            positionMs={status?.state === 'running' ? status.sourceMs
-              : status?.state === 'finished' ? camera.durationMs : 0} />
+          <ReplayVideo key={replayVersion} id={camera.id} tenantId={tenantId} stopping={status?.state === 'stopping'}>
+            {(sourceMs) => <FootageTimeline durationMs={camera.durationMs}
+              positionMs={status?.state === 'finished' ? camera.durationMs : sourceMs} />}
+          </ReplayVideo>
         </div>
         : <ClipPreview id={camera.id} tenantId={tenantId} />}
 
@@ -119,9 +119,6 @@ export function CameraViewer({ camera, tenantId }: { camera: SyntheticCamera; te
               {showReplay ? 'Simulated shift · Recorded footage' : 'Scrub the timeline to inspect a frame, or start replay to play the clip.'}
             </p>
           </div>
-          {status?.state === 'running' && <p className="text-sm font-medium text-slate-700 tabular-nums">
-            Pass {status.passNumber}
-          </p>}
         </div>
         {status?.state === 'unavailable' && <p className="error" role="alert">
           Replay could not read the clip. Check the preview and try again.
@@ -220,36 +217,6 @@ function FootageTimeline({ durationMs, positionMs, onSeek }: {
             onValueChange={([position]) => { if (position !== undefined) onSeek(position); }} />
           : <Progress max={durationMs} value={positionMs} aria-labelledby={id} aria-valuetext={valueText} />}
       </div>
-    </div>
-  );
-}
-
-function ReplayVideo({ id, tenantId, stopping }: { id: string; tenantId: string; stopping: boolean }) {
-  const footage = useRef<HTMLDivElement>(null);
-  const [unavailable, setUnavailable] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-  const [sourceSize, setSourceSize] = useState<{ width: number; height: number }>();
-  const zones = useQuery(cameraZoneQuery(id, tenantId));
-  const showingFootage = !stopping && !unavailable;
-
-  return (
-    <div ref={footage} className="footage">
-      {showingFootage && <img key={attempt} src={cameraApi.video(id)} alt="Replay footage"
-        onLoad={({ currentTarget: { naturalWidth: width, naturalHeight: height } }) => setSourceSize({ width, height })}
-        onError={() => {
-          setSourceSize(undefined);
-          setUnavailable(true);
-        }} />}
-      {showingFootage && sourceSize && !!zones.data?.length &&
-        <ZoneOverlay footage={footage} sourceSize={sourceSize} zones={zones.data} />}
-      {stopping && <p className="footage-message">Closing replay footage…</p>}
-      {!stopping && unavailable && <div className="footage-message">
-        <p role="alert">Replay footage unavailable.</p>
-        <Button type="button" variant="outline" className="mt-3" onClick={() => {
-          setUnavailable(false);
-          setAttempt(attempt + 1);
-        }}>Retry replay footage</Button>
-      </div>}
     </div>
   );
 }

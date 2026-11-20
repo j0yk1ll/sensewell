@@ -2,7 +2,7 @@
 
 ## Run locally
 
-Install Docker with the Compose v2 plugin. From a fresh checkout, run:
+Install Docker with the Compose v2 plugin. Place the trained RF-DETR Small export at `models/warehouse_detector.onnx` to enable person detection. Start the stack with:
 
 ```sh
 docker compose up --build
@@ -15,16 +15,16 @@ curl --fail http://localhost:3000/api/health
 # {"status":"ready"}
 ```
 
-Compose starts PostgreSQL, applies the Drizzle migrations, then starts the app. The migration job exits successfully after applying pending migrations. PostgreSQL data, uploaded clips, and IP camera recordings persist in the `postgres-data`, `camera-clips`, and `camera-recordings` volumes. Use `docker compose down` to stop the stack. Add any new runtime dependencies to `compose.yaml` as part of the slice that introduces them.
+Compose starts PostgreSQL and the detector service, applies the Drizzle migrations, then starts the app. Replay can show source footage while the detector is unavailable. The migration job exits successfully after applying pending migrations. PostgreSQL data, uploaded clips, and IP camera recordings persist in the `postgres-data`, `camera-clips`, and `camera-recordings` volumes. Use `docker compose down` to stop the stack. Add any new runtime dependencies to `compose.yaml` as part of the slice that introduces them.
 
 ## Add and replay a Synthetic Camera
 
 1. Create an operator account and sign in. Each account has its own camera workspace.
 2. Enter a camera name and upload an H.264 MP4 clip up to 512 MiB. Select the camera to reopen its source preview, then scrub the preview timeline to inspect a frame.
 3. Choose **Draw zone**, place the corners of the area on the preview, enter a name, and choose **Save zone**. You can save multiple zones. Use **Edit** beside a zone to rename it or redraw its outline, or **Remove** to delete that zone.
-4. Select **Loop replay** if needed, then choose **Start replay**. The replay display marks the simulated shift and shows the source position and pass number. **Stop replay** returns to the source preview.
+4. Select **Loop replay** if needed, then choose **Start replay**. Replay shows the source position, pass number, person detections with confidence scores, and how many frames in that pass have been analyzed. Use **Show person detections** to toggle the overlay. **Stop replay** returns to the source preview.
 
-FFmpeg decodes up to 10 replay frames per second at 1× source speed. Each pass has a persistent ID tied to the source camera. Active playback runs in the app process and stops when that process exits.
+FFmpeg decodes up to 10 replay frames per second at 1× source speed. Each pass has a persistent ID tied to the source camera. The CPU detector records person detections at or above 25% confidence, using normalized box coordinates and source timestamps. An analyzed frame with zero people is recorded as an empty observation. Replay uses a 650 ms display buffer and reports missing or delayed analysis per frame so playback can continue when inference falls behind. Active playback runs in the app process and stops when that process exits.
 
 The Compose secret and origins are for local use. Set `BETTER_AUTH_SECRET` to a random secret (at least 32 characters) and `BETTER_AUTH_URL` to the browser-facing HTTPS URL for a deployment.
 
@@ -53,6 +53,8 @@ The initial input is RTSP over TCP. The app records video as browser-playable H.
 Use Node.js 24 and the pnpm version in `package.json`. Run `corepack enable` to activate that version and `pnpm install --frozen-lockfile` to install workspace dependencies. `pnpm lint`, `pnpm typecheck`, and `pnpm build` run from the repository root.
 
 Install `ffmpeg` and `ffprobe` on your PATH. With a migrated PostgreSQL instance, set `DATABASE_URL` for the `sensewell_app` role, set `BETTER_AUTH_SECRET` to a local secret of at least 32 characters, and set `BETTER_AUTH_URL=http://localhost:5173`. Run `pnpm dev` to start both apps. Set `CLIP_STORAGE_DIR` to choose a private clip directory. By default the API stores clips in `.sensewell-clips` in its working directory. Vite serves the web app on port 5173 and proxies API requests to NestJS on port 3000. To run either app on its own, run `pnpm build` once to build the shared packages, then run `pnpm --filter @sensewell/web dev` or `pnpm --filter @sensewell/api dev`. The web app expects an API on port 3000 for the status check.
+
+For replay analysis outside Compose, run `apps/detector/server.py` with Python 3.12 and the packages in `apps/detector/requirements.txt`. Set `WAREHOUSE_MODEL_PATH` to the model file and `REPLAY_DETECTOR_URL=tcp://127.0.0.1:8000` for the API. The detector is intended for private access by the API.
 
 The web workspace uses React, Vite, Tailwind CSS, shadcn/ui, TanStack Router, TanStack Query, and shared Zod response contracts. Shared UI components live in `apps/web/src/components/ui` and use the theme in `apps/web/src/styles.css`. Better Auth handles operator accounts and sessions.
 

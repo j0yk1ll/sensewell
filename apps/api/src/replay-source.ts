@@ -4,7 +4,7 @@ import type { Readable } from 'node:stream';
 import { clipInput } from './clip-storage.js';
 
 const framesPerSecond = 10;
-const frameIntervalMs = 1000 / framesPerSecond;
+export const replayFrameIntervalMs = 1000 / framesPerSecond;
 
 export interface ReplayFrame {
   cameraId: string;
@@ -78,7 +78,7 @@ export async function* replayFrames(
       const wait = startedAt + sourceMs - performance.now();
       if (wait > 0) await setTimeout(wait, undefined, { signal });
       yield { ...pass, sourceMs, jpeg };
-      sourceMs += frameIntervalMs;
+      sourceMs += replayFrameIntervalMs;
     }
 
     if (!(await exited) || startedAt === undefined) throw new Error('No playable replay frames');

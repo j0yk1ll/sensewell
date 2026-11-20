@@ -1,11 +1,11 @@
-import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { requireEnv } from './require-env.js';
-import { authUser, cameraEndpointAdministrators, cameraEndpoints, cameraRecordings, cameras, cameraZones, operationalEvents, replayPasses } from './schema.js';
+import { authUser, cameraEndpointAdministrators, cameraEndpoints, cameraRecordings, cameras, cameraZones, operationalEvents, replayObservations, replayPasses } from './schema.js';
 
 export { normalizeCameraEndpoint, streamEndpoint } from './camera-endpoint.js';
-export { cameraRecordings, cameras, cameraZones, operationalEvents, replayPasses } from './schema.js';
+export { cameraRecordings, cameras, cameraZones, operationalEvents, replayObservations, replayPasses } from './schema.js';
 
 type TenantTransaction = Parameters<Parameters<ReturnType<typeof drizzle>['transaction']>[0]>[0];
 type ZoneInput = Pick<typeof cameraZones.$inferInsert, 'name' | 'points'>;
@@ -113,6 +113,24 @@ export function createDatabase({ max }: { max?: number } = {}) {
           }).from(cameras).where(and(eq(cameras.tenantId, tenantId), isNotNull(cameras.encryptedStream))));
           for (const source of sources) yield { ...source, tenantId };
         }
+      },
+    },
+    observations: {
+      async add(tenantId: string, frame: Omit<typeof replayObservations.$inferInsert, 'tenantId'>) {
+        await forTenant(tenantId, (tx) => tx.insert(replayObservations)
+          .values({ ...frame, tenantId }).onConflictDoNothing());
+      },
+      list(tenantId: string, { cameraId, passId, fromMs, toMs }: {
+        cameraId: string; passId: string; fromMs: number; toMs: number;
+      }) {
+        return forTenant(tenantId, (tx) => tx.select({
+          cameraId: replayObservations.cameraId, passId: replayObservations.passId,
+          sourceMs: replayObservations.sourceMs, people: replayObservations.people,
+        }).from(replayObservations).where(and(
+          eq(replayObservations.tenantId, tenantId), eq(replayObservations.cameraId, cameraId),
+          eq(replayObservations.passId, passId),
+          gte(replayObservations.sourceMs, fromMs), lt(replayObservations.sourceMs, toMs),
+        )).orderBy(asc(replayObservations.sourceMs)));
       },
     },
     recordings: {

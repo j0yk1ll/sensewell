@@ -63,3 +63,6 @@ export const cameraEndpointSettings = z.object({
   canManage: z.boolean(),
   endpoints: z.array(z.string()),
 });
+
+export { replayFrameAnalysis, replayImage } from './replay-analysis.js';
+export type { ReplayFrameAnalysis, ReplayImage } from './replay-analysis.js';

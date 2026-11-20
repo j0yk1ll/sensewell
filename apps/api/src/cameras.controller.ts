@@ -98,7 +98,7 @@ export class CamerasController {
   async liveVideo(@Param('id', ParseUUIDPipe) id: string, @Req() request: FastifyRequest, @Res() reply: FastifyReply) {
     await this.requireIpCamera(request, id);
     if (this.ipCameras.status(id).state !== 'connected') throw new ServiceUnavailableException('Camera feed is unavailable.');
-    return this.sendVideo(reply, (signal) => this.ipCameras.video(id, signal));
+    return this.sendFootage(reply, (signal) => this.ipCameras.video(id, signal));
   }
 
   @Get(':id/recordings')
@@ -263,21 +263,39 @@ export class CamerasController {
     @Req() request: FastifyRequest,
     @Res() reply: FastifyReply,
   ) {
+    await this.requireReplayFootage(request, id);
+    return this.sendFootage(reply, (signal) => this.replay.video(id, signal));
+  }
+
+  @Get(':id/replay/frames')
+  async replayImages(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ) {
+    await this.requireReplayFootage(request, id);
+    return this.sendFootage(reply, (signal) => this.replay.images(id, signal), 'application/x-ndjson');
+  }
+
+  private async requireReplayFootage(request: FastifyRequest, id: string) {
     await this.requireSyntheticCamera(request, id);
     const state = this.replay.status(id).state;
     if (state !== 'starting' && state !== 'running' && state !== 'finished') {
       throw new ServiceUnavailableException('Replay footage is unavailable.');
     }
-    return this.sendVideo(reply, (signal) => this.replay.video(id, signal));
   }
 
-  private sendVideo(reply: FastifyReply, video: (signal: AbortSignal) => AsyncIterable<Buffer>) {
+  private sendFootage(
+    reply: FastifyReply,
+    stream: (signal: AbortSignal) => AsyncIterable<Buffer | string>,
+    contentType = 'multipart/x-mixed-replace; boundary=frame',
+  ) {
     const abort = new AbortController();
     reply.raw.once('close', () => abort.abort());
     return reply
       .headers(privateFootageHeaders)
-      .type('multipart/x-mixed-replace; boundary=frame')
-      .send(Readable.from(video(abort.signal)));
+      .type(contentType)
+      .send(Readable.from(stream(abort.signal)));
   }
 
   private async requireCamera(request: FastifyRequest, id: string) {

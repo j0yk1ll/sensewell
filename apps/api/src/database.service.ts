@@ -7,6 +7,7 @@ export class DatabaseService implements OnApplicationShutdown {
   readonly cameras = this.database.cameras;
   readonly endpoints = this.database.endpoints;
   readonly zones = this.database.zones;
+  readonly observations = this.database.observations;
   readonly recordings = this.database.recordings;
   readonly authPool = this.database.authPool;
 

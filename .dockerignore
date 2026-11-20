@@ -5,3 +5,5 @@
 **/.env
 **/.env.*
 **/.sensewell-recordings/
+models/
+warehouse_detector.onnx

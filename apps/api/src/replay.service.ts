@@ -1,14 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout } from 'node:timers/promises';
 import { Injectable, Logger, ServiceUnavailableException, type OnModuleDestroy } from '@nestjs/common';
-import type { ReplayStatus, SyntheticCamera } from '@sensewell/contracts';
+import type { ReplayFrameAnalysis, ReplayImage, ReplayStatus, SyntheticCamera } from '@sensewell/contracts';
 import { ClipStorage } from './clip-storage.js';
 import { DatabaseService } from './database.service.js';
-import { jpegPart, replayFrames, type ReplayFrame } from './replay-source.js';
+import { detectPeople, replayDisplayDelayMs } from './replay-detector.js';
+import { jpegPart, replayFrameIntervalMs, replayFrames, type ReplayFrame } from './replay-source.js';
+
+type DisplayedFrame = ReplayFrame & Omit<ReplayImage, 'jpeg'>;
 
 interface ReplayView {
   status: ReplayStatus;
-  frame?: ReplayFrame;
+  frame?: DisplayedFrame;
 }
 
 interface Replay extends ReplayView {
@@ -56,19 +59,35 @@ export class ReplayService implements OnModuleDestroy {
   }
 
   async *video(cameraId: string, signal: AbortSignal) {
+    for await (const { jpeg } of this.displayedFrames(cameraId, signal)) yield jpegPart(jpeg);
+    if (!signal.aborted) yield Buffer.from('--frame--\r\n');
+  }
+
+  async *images(cameraId: string, signal: AbortSignal) {
+    for await (const frame of this.displayedFrames(cameraId, signal)) {
+      const { passId, passNumber, sourceMs, jpeg, analysis, analyzedFrames, totalFrames } = frame;
+      const image: ReplayImage = {
+        passId, passNumber, sourceMs, jpeg: jpeg.toString('base64'), analysis, analyzedFrames, totalFrames,
+      };
+      yield JSON.stringify(image) + '\n';
+    }
+  }
+
+  private async *displayedFrames(cameraId: string, signal: AbortSignal) {
     const replay = this.active.get(cameraId);
-    let previous: ReplayFrame | undefined;
+    let previous: DisplayedFrame | undefined;
     while (replay && !signal.aborted && !replay.abort.signal.aborted && this.active.get(cameraId) === replay) {
       const frame = replay.frame;
       if (frame && frame !== previous) {
         previous = frame;
-        yield jpegPart(frame.jpeg);
+        yield frame;
       }
-      await setTimeout(50, undefined, { signal }).catch(() => undefined);
+      await setTimeout(40, undefined, { signal }).catch(() => undefined);
     }
-    const last = this.completed.get(cameraId)?.frame;
-    if (!signal.aborted && last && last !== previous) yield jpegPart(last.jpeg);
-    if (!signal.aborted) yield Buffer.from('--frame--\r\n');
+    const last = replay
+      ? replay.status.state === 'finished' ? replay.frame : undefined
+      : this.completed.get(cameraId)?.frame;
+    if (!signal.aborted && last && last !== previous) yield last;
   }
 
   async onModuleDestroy() {
@@ -78,21 +97,38 @@ export class ReplayService implements OnModuleDestroy {
   private async run(tenantId: string, camera: ReplayCamera, loop: boolean, replay: Replay) {
     const signal = replay.abort.signal;
     let result: ReplayStatus = { state: 'idle' };
+    let pendingAnalysis: Promise<void> | undefined;
+    let lastDisplay: Promise<void> | undefined;
+    const totalFrames = Math.ceil((camera.durationMs - camera.startOffsetMs) / replayFrameIntervalMs);
     try {
       let passNumber = 0;
       do {
         const passId = randomUUID();
-        passNumber += 1;
+        const currentPass = ++passNumber;
+        let analyzedFrames = 0;
         await this.database.cameras.recordPass(tenantId, { cameraId: camera.id, id: passId });
         signal.throwIfAborted();
 
         for await (const frame of replayFrames(this.clips.path(camera.id), {
           cameraId: camera.id, passId,
         }, camera, signal)) {
-          replay.frame = frame;
-          replay.status = { state: 'running', passId, passNumber, sourceMs: frame.sourceMs };
+          let analysis: ReplayFrameAnalysis = { state: 'skipped' };
+          if (!pendingAnalysis) {
+            analysis = { state: 'delayed' };
+            pendingAnalysis = this.analyze(tenantId, frame, signal).then((result) => {
+              analysis = result;
+              if (result.state === 'analyzed') analyzedFrames += 1;
+            }).finally(() => { pendingAnalysis = undefined; });
+          }
+
+          // Release frames in source order at 1×, with time for inference on each exact image.
+          lastDisplay = setTimeout(replayDisplayDelayMs, undefined, { signal }).then(() => {
+            replay.frame = { ...frame, passNumber: currentPass, analysis, analyzedFrames, totalFrames };
+            replay.status = { state: 'running', passId, passNumber: currentPass, sourceMs: frame.sourceMs };
+          }, () => undefined);
         }
       } while (loop && !signal.aborted);
+      await lastDisplay;
       if (!signal.aborted) result = { state: 'finished' };
     } catch {
       if (!signal.aborted) {
@@ -100,6 +136,9 @@ export class ReplayService implements OnModuleDestroy {
         result = { state: 'unavailable' };
       }
     } finally {
+      if (result.state !== 'finished') replay.abort.abort();
+      await pendingAnalysis;
+      replay.status = result;
       this.completed.set(camera.id, {
         status: result,
         frame: result.state === 'finished' ? replay.frame : undefined,
@@ -110,5 +149,18 @@ export class ReplayService implements OnModuleDestroy {
       }
       this.active.delete(camera.id);
     }
+  }
+
+  private async analyze(tenantId: string, { jpeg, cameraId, passId, sourceMs }: ReplayFrame, signal: AbortSignal) {
+    const result = await detectPeople(jpeg, signal);
+    if (result.state === 'analyzed' && !signal.aborted) {
+      try {
+        await this.database.observations.add(tenantId, { cameraId, passId, sourceMs, people: result.people });
+      } catch {
+        this.logger.warn(`Could not record an observation for replay pass ${passId}`);
+        return { state: 'unavailable' } as const;
+      }
+    }
+    return result;
   }
 }
