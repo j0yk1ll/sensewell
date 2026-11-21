@@ -71,6 +71,13 @@
       "when": 1795215674379,
       "tag": "0009_zone_rule_event_type",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795251062417,
+      "tag": "0010_replay_history_runs",
+      "breakpoints": true
     }
   ]
 }

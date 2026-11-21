@@ -139,7 +139,7 @@ export function createDatabase({ max }: { max?: number } = {}) {
       async add(tenantId: string, camera: Pick<typeof cameras.$inferInsert, 'id' | 'name' | 'durationMs' | 'startOffsetMs'>) {
         await forTenant(tenantId, (tx) => tx.insert(cameras).values({ ...camera, tenantId }));
       },
-      async recordPass(tenantId: string, pass: { cameraId: string; id: string }) {
+      async recordPass(tenantId: string, pass: { cameraId: string; id: string; runId: string }) {
         await forTenant(tenantId, (tx) => tx.insert(replayPasses).values({ ...pass, tenantId }));
       },
       async addIp(tenantId: string, camera: { id: string; name: string; encryptedStream: string }) {
@@ -198,10 +198,20 @@ export function createDatabase({ max }: { max?: number } = {}) {
     },
     zoneEntries: {
       history(tenantId: string, cameraId: string) {
-        return forTenant(tenantId, (tx) => tx.select(historyFields).from(replayZoneEntries)
-          .innerJoin(operationalEvents, entryEvent).innerJoin(cameras, entryCamera)
-          .where(entryScope(tenantId, cameraId))
-          .orderBy(desc(operationalEvents.occurredAt), desc(replayZoneEntries.eventId)).limit(100));
+        return forTenant(tenantId, (tx) => {
+          const latestRun = tx.select({ runId: replayPasses.runId }).from(replayPasses)
+            .where(and(eq(replayPasses.tenantId, tenantId), eq(replayPasses.cameraId, cameraId)))
+            .orderBy(desc(replayPasses.startedAt), desc(replayPasses.id)).limit(1);
+          return tx.select(historyFields).from(replayZoneEntries)
+            .innerJoin(operationalEvents, entryEvent).innerJoin(cameras, entryCamera)
+            .innerJoin(replayPasses, and(
+              eq(replayPasses.tenantId, replayZoneEntries.tenantId),
+              eq(replayPasses.cameraId, replayZoneEntries.cameraId),
+              eq(replayPasses.id, replayZoneEntries.passId),
+            ))
+            .where(and(entryScope(tenantId, cameraId), eq(replayPasses.runId, latestRun)))
+            .orderBy(desc(operationalEvents.occurredAt), desc(replayZoneEntries.eventId)).limit(100);
+        });
       },
       async evidence(tenantId: string, cameraId: string, id: string) {
         const [row] = await forTenant(tenantId, (tx) => tx.select({

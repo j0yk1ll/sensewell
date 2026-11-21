@@ -1,0 +1,3 @@
+ALTER TABLE "replay_passes" ADD COLUMN "run_id" uuid DEFAULT gen_random_uuid() NOT NULL;--> statement-breakpoint
+CREATE INDEX "replay_passes_tenant_id_camera_id_started_at_id_index" ON "replay_passes" USING btree ("tenant_id","camera_id","started_at","id");--> statement-breakpoint
+CREATE INDEX "replay_passes_tenant_id_camera_id_run_id_index" ON "replay_passes" USING btree ("tenant_id","camera_id","run_id");

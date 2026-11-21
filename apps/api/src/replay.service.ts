@@ -17,6 +17,7 @@ interface ReplayView {
 
 interface Replay extends ReplayView {
   abort: AbortController;
+  ready: Promise<void>;
   task: Promise<void>;
 }
 
@@ -34,18 +35,28 @@ export class ReplayService implements OnModuleDestroy {
     return this.active.get(cameraId)?.status ?? this.completed.get(cameraId)?.status ?? { state: 'idle' };
   }
 
-  start(tenantId: string, camera: ReplayCamera, loop: boolean) {
-    if (this.active.has(camera.id)) return this.status(camera.id);
+  async start(tenantId: string, camera: ReplayCamera, loop: boolean) {
+    const existing = this.active.get(camera.id);
+    if (existing) return this.startedStatus(existing);
     if (this.active.size >= 4) throw new ServiceUnavailableException('Replay is at capacity. Try again shortly.');
 
+    const runId = randomUUID();
     const replay: Replay = {
       abort: new AbortController(),
       status: { state: 'starting' },
+      ready: this.database.cameras.recordPass(tenantId, { cameraId: camera.id, id: runId, runId }),
       task: Promise.resolve(),
     };
     this.active.set(camera.id, replay);
     this.completed.delete(camera.id);
-    replay.task = this.run(tenantId, camera, loop, replay);
+    replay.task = this.run(tenantId, camera, loop, runId, replay);
+    return this.startedStatus(replay);
+  }
+
+  private async startedStatus(replay: Replay) {
+    await replay.ready.catch(() => {
+      throw new ServiceUnavailableException('Could not start replay. Try again shortly.');
+    });
     return replay.status;
   }
 
@@ -95,20 +106,21 @@ export class ReplayService implements OnModuleDestroy {
     await Promise.all([...this.active.keys()].map((id) => this.stop(id)));
   }
 
-  private async run(tenantId: string, camera: ReplayCamera, loop: boolean, replay: Replay) {
+  private async run(tenantId: string, camera: ReplayCamera, loop: boolean, runId: string, replay: Replay) {
     const signal = replay.abort.signal;
     let result: ReplayStatus = { state: 'idle' };
     let pendingAnalysis: Promise<void> | undefined;
     let lastDisplay: Promise<void> | undefined;
     const totalFrames = Math.ceil((camera.durationMs - camera.startOffsetMs) / replayFrameIntervalMs);
     try {
+      await replay.ready;
       let passNumber = 0;
       do {
-        const passId = randomUUID();
         const currentPass = ++passNumber;
+        const passId = currentPass === 1 ? runId : randomUUID();
         let analyzedFrames = 0;
         const zoneEntries = new ZoneEntryEvaluator();
-        await this.database.cameras.recordPass(tenantId, { cameraId: camera.id, id: passId });
+        if (currentPass > 1) await this.database.cameras.recordPass(tenantId, { cameraId: camera.id, id: passId, runId });
         signal.throwIfAborted();
 
         for await (const frame of replayFrames(this.clips.path(camera.id), {

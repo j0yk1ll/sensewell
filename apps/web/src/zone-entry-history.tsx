@@ -11,13 +11,15 @@ function replayPosition(event: ZoneEntryEvent) {
   return `Replay pass ${event.passNumber} · ${formatClipTime(event.sourceMs, true)}`;
 }
 
+export const zoneEntryHistoryKey = (id: string, tenantId: string) => ['zone-entry-history', tenantId, id];
+
 export function ZoneEntryHistory({ id, tenantId, replayActive }: {
   id: string; tenantId: string; replayActive: boolean;
 }) {
   const [selected, setSelected] = useState<string>();
   const openButton = useRef<HTMLButtonElement | null>(null);
   const history = useQuery({
-    queryKey: ['zone-entry-history', tenantId, id],
+    queryKey: zoneEntryHistoryKey(id, tenantId),
     queryFn: ({ signal }) => cameraApi.eventHistory(id, signal),
     refetchInterval: replayActive ? 1000 : 5000,
     retry: false,

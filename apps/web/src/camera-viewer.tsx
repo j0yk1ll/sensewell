@@ -12,7 +12,7 @@ import { formatClipTime } from '@/lib/utils';
 import { cameraApi } from './camera-api';
 import { ReplayVideo } from './replay-video';
 import { ZoneEntryRules } from './zone-entry-rules';
-import { ZoneEntryHistory } from './zone-entry-history';
+import { ZoneEntryHistory, zoneEntryHistoryKey } from './zone-entry-history';
 import { ZoneEditor } from './zone-editor';
 
 const replayLabel = {
@@ -72,6 +72,7 @@ export function CameraViewer({ camera, tenantId }: { camera: SyntheticCamera; te
     onMutate: () => queryClient.cancelQueries({ queryKey }),
     onSuccess: (updated, command) => {
       if (command === 'start') {
+        void queryClient.resetQueries({ queryKey: zoneEntryHistoryKey(camera.id, tenantId) });
         setKeepLastFrame(true);
         setReplayVersion((version) => version + 1);
       } else {
@@ -145,7 +146,7 @@ export function CameraViewer({ camera, tenantId }: { camera: SyntheticCamera; te
     <div className="grid min-w-0 gap-4">
       {replayViewer}
       <ZoneEntryRules id={camera.id} tenantId={tenantId} />
-      <ZoneEntryHistory id={camera.id} tenantId={tenantId} replayActive={active} />
+      <ZoneEntryHistory key={replayVersion} id={camera.id} tenantId={tenantId} replayActive={active} />
     </div>
   );
 }

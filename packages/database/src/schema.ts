@@ -113,6 +113,7 @@ export const cameraZones = pgTable('camera_zones', {
 
 export const replayPasses = pgTable('replay_passes', {
   id: uuid().primaryKey(),
+  runId: uuid('run_id').defaultRandom().notNull(),
   tenantId: uuid('tenant_id').notNull(),
   cameraId: uuid('camera_id').notNull(),
   startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
@@ -124,6 +125,8 @@ export const replayPasses = pgTable('replay_passes', {
     foreignColumns: [cameras.tenantId, cameras.id],
   }),
   unique().on(pass.tenantId, pass.cameraId, pass.id),
+  index().on(pass.tenantId, pass.cameraId, pass.startedAt, pass.id),
+  index().on(pass.tenantId, pass.cameraId, pass.runId),
 ]).enableRLS();
 
 export const replayObservations = pgTable('replay_observations', {

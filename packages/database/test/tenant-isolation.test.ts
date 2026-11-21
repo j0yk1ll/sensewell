@@ -200,9 +200,10 @@ test('confirmed replay events retain private evidence from their original pass',
   assert.equal(await database.zoneEntryRules.setEnabled(otherTenant, cameraId, rule.id, true), undefined);
 
   const passId = randomUUID();
-  await database.cameras.recordPass(tenant, { cameraId, id: passId });
+  const runId = randomUUID();
+  await database.cameras.recordPass(tenant, { cameraId, id: passId, runId });
   const otherPassId = randomUUID();
-  await database.cameras.recordPass(tenant, { cameraId, id: otherPassId });
+  await database.cameras.recordPass(tenant, { cameraId, id: otherPassId, runId });
   const person = { box: [0.2, 0.3, 0.4, 0.5] as [number, number, number, number], confidence: 0.85 };
   const jpeg = Buffer.from('sample frame bytes');
   const frame = { cameraId, passId, passNumber: 1, sourceMs: 200, people: [person], occurredAt: new Date(), jpeg };
@@ -247,6 +248,18 @@ test('confirmed replay events retain private evidence from their original pass',
   assert.equal(exit.sourceMs, 300);
   assert.equal(exit.ruleName, update.name);
   assert.deepEqual(entry, event);
+
+  const loopFrame = { ...frame, passId: otherPassId, passNumber: 2, occurredAt: new Date(frame.occurredAt.getTime() + 200) };
+  await database.observations.recordForReplay(tenant, { ...loopFrame, sourceMs: 400 }, (rules) =>
+    rules.map((rule) => ({ rule, personIndex: 0, direction: 'entry' })));
+  assert.deepEqual((await database.zoneEntries.history(tenant, cameraId)).map(({ passNumber }) => passNumber), [2, 1, 1]);
+
+  const freshPassId = randomUUID();
+  await database.cameras.recordPass(tenant, { cameraId, id: freshPassId, runId: randomUUID() });
+  assert.deepEqual(await database.zoneEntries.history(tenant, cameraId), []);
+  await database.observations.recordForReplay(tenant, { ...frame, passId: freshPassId }, (rules) =>
+    rules.map((rule) => ({ rule, personIndex: 0, direction: 'entry' })));
+  assert.deepEqual((await database.zoneEntries.history(tenant, cameraId)).map(({ passId }) => passId), [freshPassId]);
 
   assert.equal(await database.zoneEntryRules.remove(otherTenant, cameraId, rule.id), false);
   assert.equal(await database.zoneEntryRules.remove(tenant, siblingId, rule.id), false);
