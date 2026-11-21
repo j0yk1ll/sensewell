@@ -64,7 +64,6 @@ function CrossingEvidence({ id, tenantId, eventId, onClose }: {
   const heading = useRef<HTMLHeadingElement>(null);
   const image = useRef<HTMLDivElement>(null);
   const [sourceSize, setSourceSize] = useState<{ width: number; height: number }>();
-  const [videoError, setVideoError] = useState(false);
   const evidence = useQuery({
     queryKey: ['zone-entry-evidence', tenantId, id, eventId],
     queryFn: ({ signal }) => cameraApi.eventEvidence(id, eventId, signal),
@@ -100,18 +99,47 @@ function CrossingEvidence({ id, tenantId, eventId, onClose }: {
             </div>
             <figcaption className="mt-1 text-sm text-slate-700">Analyzed crossing frame · {confidence}</figcaption>
           </figure>
-          <div className="min-w-0">
-            <div className="footage">
-              <video aria-label="Timestamped source clip" src={cameraApi.media(id)} preload="metadata" controls playsInline
-                onLoadedMetadata={({ currentTarget }) => { currentTarget.currentTime = event.sourceMs / 1000; }}
-                onError={() => setVideoError(true)} />
-            </div>
-            <p className="mt-1 text-sm text-slate-700">Source clip · {formatClipTime(event.sourceMs, true)}</p>
-            {videoError && <p className="error" role="alert">Source clip unavailable.</p>}
-          </div>
+          <EvidenceClip id={id} tenantId={tenantId} eventId={eventId} sourceMs={event.sourceMs} window={event.window} />
         </div>
       </>}
     </section>
+  );
+}
+
+function EvidenceClip({ id, tenantId, eventId, sourceMs, window }: {
+  id: string; tenantId: string; eventId: string; sourceMs: number; window: { startMs: number; endMs: number };
+}) {
+  const clip = useQuery({
+    queryKey: ['event-evidence-clip', tenantId, id, eventId],
+    queryFn: ({ signal }) => cameraApi.eventEvidenceClip(id, eventId, signal),
+    staleTime: Infinity,
+    gcTime: 0,
+    retry: false,
+  });
+  const [url, setUrl] = useState<string>();
+  const [videoError, setVideoError] = useState(false);
+  useEffect(() => {
+    if (!clip.data) return;
+    const objectUrl = URL.createObjectURL(clip.data);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [clip.data]);
+
+  return (
+    <div className="min-w-0">
+      <div className="footage">
+        {url && <video aria-label="Timestamped evidence clip" src={url} preload="metadata" controls playsInline
+          onLoadedMetadata={({ currentTarget }) => {
+            currentTarget.currentTime = Math.min(currentTarget.duration, (sourceMs - window.startMs) / 1000);
+          }}
+          onError={() => setVideoError(true)} />}
+        {!url && !clip.isError && <p className="footage-message" role="status">Preparing evidence clip…</p>}
+        {(clip.isError || videoError) && <p className="footage-message" role="alert">Evidence clip unavailable.</p>}
+      </div>
+      <p className="mt-1 text-sm tabular-nums text-slate-700">
+        Source clip · {formatClipTime(window.startMs, true)} to {formatClipTime(window.endMs, true)}
+      </p>
+    </div>
   );
 }
 

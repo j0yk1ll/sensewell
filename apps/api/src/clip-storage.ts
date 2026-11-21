@@ -12,7 +12,15 @@ import {
 } from '@nestjs/common';
 import { maxClipBytes, maxClipMiB } from '@sensewell/contracts';
 
-const probe = promisify(execFile);
+const runMediaCommand = promisify(execFile);
+const contextMs = 3000;
+
+export function evidenceWindow(sourceMs: number, camera: { startOffsetMs: number; durationMs: number }) {
+  return {
+    startMs: Math.max(camera.startOffsetMs, sourceMs - contextMs),
+    endMs: Math.min(camera.durationMs, sourceMs + contextMs),
+  };
+}
 
 export const clipInput = {
   flags: ['-protocol_whitelist', 'file', '-f', 'mov'],
@@ -21,6 +29,7 @@ export const clipInput = {
 
 @Injectable()
 export class ClipStorage {
+  private evidenceEncodes = 0;
   private readonly root = process.env.CLIP_STORAGE_DIR ?? '.sensewell-clips';
 
   path(cameraId: string) {
@@ -61,10 +70,33 @@ export class ClipStorage {
     }
   }
 
+  async evidenceClip(cameraId: string, { startMs, endMs }: ReturnType<typeof evidenceWindow>, signal: AbortSignal) {
+    if (this.evidenceEncodes >= 2) throw new ServiceUnavailableException('Evidence clip processing is busy. Try again shortly.');
+    this.evidenceEncodes += 1;
+    try {
+      const { stdout } = await runMediaCommand('ffmpeg', [
+        '-nostdin', '-v', 'error', '-xerror', '-threads', '2', '-filter_threads', '1',
+        ...clipInput.flags, '-ss', String(startMs / 1000), '-i', this.path(cameraId),
+        '-t', String((endMs - startMs) / 1000), '-map', `0:${clipInput.videoStream}`, '-map', '0:a:0?',
+        '-vf', "scale=w='min(960,iw)':h='min(540,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-threads', '2',
+        '-fpsmax', '30', '-g', '30', '-maxrate', '4M', '-bufsize', '2M',
+        '-c:a', 'aac', '-b:a', '96k', '-movflags', '+frag_keyframe+empty_moov+default_base_moof',
+        '-f', 'mp4', 'pipe:1',
+      ], { timeout: 10_000, maxBuffer: 8 * 1024 * 1024, encoding: 'buffer', signal });
+      if (!stdout.length) throw new Error('Empty evidence clip');
+      return stdout;
+    } catch {
+      throw new ServiceUnavailableException('The evidence clip is unavailable.');
+    } finally {
+      this.evidenceEncodes -= 1;
+    }
+  }
+
   private async probeTimeline(path: string) {
     const probeOptions = { timeout: 15_000, maxBuffer: 64 * 1024 };
     try {
-      const { stdout } = await probe('ffprobe', [
+      const { stdout } = await runMediaCommand('ffprobe', [
         '-v', 'error', ...clipInput.flags, '-select_streams', clipInput.videoStream,
         '-show_entries', 'stream=codec_name,pix_fmt,duration,start_time:format=start_time',
         '-of', 'json', path,
@@ -84,7 +116,7 @@ export class ClipStorage {
         throw new Error('Invalid clip timeline');
       }
 
-      const { stdout: frameHash } = await probe('ffmpeg', [
+      const { stdout: frameHash } = await runMediaCommand('ffmpeg', [
         '-nostdin', '-v', 'error', '-xerror', '-threads', '2', ...clipInput.flags, '-i', path,
         '-map', `0:${clipInput.videoStream}`, '-frames:v', '1', '-f', 'framehash', 'pipe:1',
       ], probeOptions);

@@ -126,6 +126,11 @@ export const cameraApi = {
   eventEvidence(id: string, eventId: string, signal: AbortSignal) {
     return request(`${cameraPath(id)}/zone-entry-events/${eventId}`, zoneEntryEvidence, 'Could not load event evidence.', { signal });
   },
+  async eventEvidenceClip(id: string, eventId: string, signal: AbortSignal) {
+    const response = await checkedRequest(`${cameraPath(id)}/zone-entry-events/${eventId}/clip`,
+      'Could not load the evidence clip.', { signal });
+    return response.blob();
+  },
   async *replayFrames(id: string, signal: AbortSignal) {
     const response = await checkedRequest(`${cameraPath(id)}/replay/frames`, 'Could not load replay footage.', { signal });
     if (!response.body) throw new Error('Replay footage is unavailable.');

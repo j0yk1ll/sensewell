@@ -9,7 +9,7 @@ import {
 import { cameraName, cameraZoneInput, ipCameraInput, maxCameraNameLength, maxClipBytes, maxClipMiB, replayOptions, zoneEntryRuleInput, zoneEntryRuleToggle } from '@sensewell/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AuthService } from './auth.js';
-import { ClipStorage } from './clip-storage.js';
+import { ClipStorage, evidenceWindow } from './clip-storage.js';
 import { DatabaseService } from './database.service.js';
 import { IpCameraService } from './ip-camera.service.js';
 import { cameraStream, encryptStream } from './ip-camera-source.js';
@@ -274,10 +274,34 @@ export class CamerasController {
     @Param('eventId', ParseUUIDPipe) eventId: string,
     @Req() request: FastifyRequest,
   ) {
-    const { tenantId } = await this.requireSyntheticCamera(request, id);
+    const { evidence, window } = await this.requireEventEvidence(request, id, eventId);
+    return { ...evidence, window };
+  }
+
+  @Get(':id/zone-entry-events/:eventId/clip')
+  async zoneEntryClip(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ) {
+    const abort = new AbortController();
+    const cancel = () => abort.abort();
+    reply.raw.once('close', cancel);
+    try {
+      const { window } = await this.requireEventEvidence(request, id, eventId);
+      const clip = await this.clips.evidenceClip(id, window, abort.signal);
+      return reply.headers(privateFootageHeaders).type('video/mp4').send(clip);
+    } finally {
+      reply.raw.off('close', cancel);
+    }
+  }
+
+  private async requireEventEvidence(request: FastifyRequest, id: string, eventId: string) {
+    const { camera, tenantId } = await this.requireSyntheticCamera(request, id);
     const evidence = await this.database.zoneEntries.evidence(tenantId, id, eventId);
     if (!evidence?.jpeg) throw new NotFoundException('Event evidence not found.');
-    return evidence;
+    return { evidence, window: evidenceWindow(evidence.sourceMs, camera) };
   }
 
   @Get(':id/media')

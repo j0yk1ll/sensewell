@@ -41,6 +41,7 @@ export type ZoneEntryEvent = z.infer<typeof zoneEntryEvent>;
 
 export const zoneEntryEvidence = zoneEntryEvent.extend({
   zone: cameraZone,
+  window: z.object({ startMs: z.number().int().nonnegative(), endMs: z.number().int().positive() }),
   person: personDetection,
   jpeg: z.string().max(1_398_104),
 });
