@@ -1,4 +1,5 @@
-import { BadGatewayException, Logger } from '@nestjs/common';
+import { setTimeout } from 'node:timers/promises';
+import { BadGatewayException, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { activityQuery } from '@sensewell/contracts';
 
 const logger = new Logger('OpenRouter');
@@ -23,35 +24,71 @@ type Message =
   | { role: 'assistant'; content: string | null; tool_calls: ToolCall[]; reasoning_details?: unknown[] }
   | { role: 'tool'; content: string; tool_call_id: string };
 
+async function rateLimit(response: Response) {
+  const payload = await response.json().catch(() => undefined);
+  const source = payload?.error?.metadata?.limit_source;
+  const daily = source === 'openrouter_free_tier_daily';
+  const retryAfter = response.headers.get('Retry-After');
+  const reset = response.headers.get('X-RateLimit-Reset');
+  let waitMs: number | undefined;
+  if (retryAfter) {
+    waitMs = /^\d+(?:\.\d+)?$/.test(retryAfter) ? Number(retryAfter) * 1000 : Date.parse(retryAfter) - Date.now();
+  }
+  if (!Number.isFinite(waitMs) && reset && /^\d+$/.test(reset)) {
+    waitMs = Number(reset) - Date.now();
+  }
+  const cooldownMs = waitMs !== undefined && Number.isFinite(waitMs) ? Math.max(0, waitMs) : undefined;
+  const waitSeconds = cooldownMs === undefined ? undefined : Math.ceil(cooldownMs / 1000);
+  const reason = daily ? 'daily free-model quota' : source === 'upstream_provider_shared_pool' ? 'provider capacity' : 'request rate';
+  logger.warn(`OpenRouter rate limited chat (${reason})`);
+  const message = daily
+    ? 'OpenRouter’s daily free-model quota has been reached. Try again after midnight UTC.'
+    : waitSeconds
+      ? `OpenRouter is rate limiting chat. Try again in ${waitSeconds} seconds.`
+      : 'OpenRouter is rate limiting chat. Try again shortly.';
+  return { retryMs: daily ? Infinity : (cooldownMs ?? 1000), message };
+}
+
 export async function askOpenRouter(
   apiKey: string, model: string, instructions: string, question: string, inspect: (args: string) => Promise<unknown>,
 ) {
   const messages: Message[] = [{ role: 'system', content: instructions }, { role: 'user', content: question }];
   const signal = AbortSignal.timeout(90_000);
   let callCount = 0;
+  let retried = false;
   for (let round = 0; round < 5; round++) {
-    const requireTool = round === 0;
-    let completion;
-    try {
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model, messages, tools: [tool], tool_choice: requireTool ? 'required' : 'auto',
-          provider: { require_parameters: true }, max_tokens: 2048,
-        }),
-        signal,
-      });
-      if (!response.ok) {
-        logger.warn(`Chat completion returned HTTP ${response.status}`);
-        throw new Error('OpenRouter HTTP error');
+    const body = JSON.stringify({
+      model, messages, tools: [tool], tool_choice: round === 0 ? 'required' : 'auto',
+      provider: { require_parameters: true }, max_tokens: 2048,
+    });
+    const request = () => fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body,
+      signal,
+    }).catch(() => {
+      throw new BadGatewayException('The chat model could not respond. Try again.');
+    });
+    let response = await request();
+    if (response.status === 429) {
+      let limit = await rateLimit(response);
+      if (!retried && limit.retryMs <= 5000) {
+        retried = true;
+        await setTimeout(limit.retryMs, undefined, { signal }).catch(() => {
+          throw new HttpException(limit.message, HttpStatus.TOO_MANY_REQUESTS);
+        });
+        response = await request();
+        if (response.status === 429) limit = await rateLimit(response);
       }
-      const { choices } = await response.json();
-      completion = choices?.[0];
-      if (completion?.error || completion?.finish_reason === 'length' || !completion?.message) {
-        throw new Error('Incomplete OpenRouter response');
-      }
-    } catch {
+      if (response.status === 429) throw new HttpException(limit.message, HttpStatus.TOO_MANY_REQUESTS);
+    }
+    if (!response.ok) {
+      logger.warn(`Chat completion returned HTTP ${response.status}`);
+      throw new BadGatewayException('The chat model could not respond. Try again.');
+    }
+    const payload = await response.json().catch(() => undefined);
+    const completion = payload?.choices?.[0];
+    if (completion?.error || completion?.finish_reason === 'length' || !completion?.message) {
       throw new BadGatewayException('The chat model could not respond. Try again.');
     }
 

@@ -28,7 +28,7 @@ function setup({ observations = frames, zones = [zone], active = true, selectedC
   return new CamerasController(auth, database, undefined, replay, undefined, new ActivityChatService(database, replay));
 }
 
-function mockModel(t, args, answer) {
+function mockModel(t, args, answer, rateLimit) {
   const oldKey = process.env.OPENROUTER_API_KEY;
   const oldModel = process.env.OPENROUTER_MODEL;
   process.env.OPENROUTER_API_KEY = 'test-key';
@@ -44,7 +44,12 @@ function mockModel(t, args, answer) {
     assert.equal(options.headers.Authorization, 'Bearer test-key');
     const body = JSON.parse(options.body);
     requests.push(body);
-    const message = requests.length === 1
+    if (requests.length === rateLimit?.request) {
+      return globalThis.Response.json({
+        error: { message: 'Private upstream diagnostic text', metadata: { limit_source: rateLimit.source } },
+      }, { status: 429, headers: { 'Retry-After': rateLimit.retryAfter } });
+    }
+    const message = requests[0] === body
       ? { role: 'assistant', content: null, tool_calls: [{
           id: 'call_1', type: 'function', function: { name: 'inspect_activity', arguments: JSON.stringify(args) },
         }] }
@@ -120,4 +125,32 @@ test('skipped samples expose coverage gaps while short track continuity still su
   assert.equal(result.zones[0].averageCompleteDwellMs, 100);
   assert.equal(result.analysisGapCount, 1);
   assert.equal(answer.sources[0].incomplete, true);
+});
+
+test('retries a brief OpenRouter rate limit without restarting the tool conversation', async (t) => {
+  const requests = mockModel(t, {}, 'Activity found.', {
+    request: 2, retryAfter: '0', source: 'openrouter_free_tier_per_minute',
+  });
+  const result = await setup().activityChat(camera.id, { tenant: tenantId }, { question: 'What happened?' });
+  assert.equal(result.answer, 'Activity found.');
+  assert.equal(requests.length, 3);
+  assert.deepEqual(requests[1], requests[2]);
+});
+
+test('reports daily quota exhaustion without retrying or exposing upstream text', async (t) => {
+  const requests = mockModel(t, {}, 'Activity found.', {
+    request: 1, retryAfter: '0', source: 'openrouter_free_tier_daily',
+  });
+  await assert.rejects(setup().activityChat(camera.id, { tenant: tenantId }, { question: 'What happened?' }),
+    { status: 429, message: /daily free-model quota/ });
+  assert.equal(requests.length, 1);
+});
+
+test('reports the remaining wait when OpenRouter requests a longer cooldown', async (t) => {
+  const requests = mockModel(t, {}, 'Activity found.', {
+    request: 1, retryAfter: '30', source: 'openrouter_free_tier_per_minute',
+  });
+  await assert.rejects(setup().activityChat(camera.id, { tenant: tenantId }, { question: 'What happened?' }),
+    { status: 429, message: /30 seconds/ });
+  assert.equal(requests.length, 1);
 });

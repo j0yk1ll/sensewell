@@ -34,7 +34,7 @@ The Compose secret and origins are for local use. Set `BETTER_AUTH_SECRET` to a 
 
 ## Investigate recorded activity
 
-Set `OPENROUTER_API_KEY` in your environment or local Compose `.env` before starting the app. Get a key from [OpenRouter](https://openrouter.ai/settings/keys). The API defaults to [Gemma 4 26B A4B (free)](https://openrouter.ai/google/gemma-4-26b-a4b-it:free). To override it, set `OPENROUTER_MODEL` to an OpenRouter model ID with tool calling support. The app makes the OpenRouter requests over HTTPS.
+Set `OPENROUTER_API_KEY` in your environment or local Compose `.env` before starting the app. Get a key from [OpenRouter](https://openrouter.ai/settings/keys). The API defaults to [Gemma 4 26B A4B (free)](https://openrouter.ai/google/gemma-4-26b-a4b-it:free). To override it, set `OPENROUTER_MODEL` to an OpenRouter model ID with tool calling support. The app makes the OpenRouter requests over HTTPS. A chat question usually makes at least two model requests, one to select the evidence query and one to answer. The free model is subject to OpenRouter quota and provider capacity limits.
 
 After a Synthetic Camera has started collecting observations, choose a pass under **Zone activity** and enter a question under **Investigate footage**. For example, “How many people entered the rack-side zone between 0:20 and 0:55 at 35% confidence? Include possible crossings and show me the evidence.” Ask for occupancy at a clip time or for complete visit durations in a range. Open a supporting timestamp to view the source clip at that time. The answer identifies the replay pass and shows the analysis cutoff and incomplete coverage when applicable.
 
