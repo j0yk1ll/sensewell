@@ -1,3 +1,4 @@
+import { activityChatResponse, type ActivityChatInput } from '@sensewell/contracts';
 import { zoneActivity, zoneActivityPasses, zoneEntryEvidence, zoneEntryHistory, zoneEntryRule, zoneEntryRuleList, type ZoneEntryRuleInput } from '@sensewell/contracts';
 import { cameraEndpointSettings, cameraList, cameraZone, cameraZoneList, captureStatus, ipCamera, recordingList, replayImage, replayStatus, syntheticCamera, type CameraZoneInput, type IpCameraInput } from '@sensewell/contracts';
 
@@ -119,6 +120,19 @@ export const cameraApi = {
     return request(`${cameraPath(id)}/zone-entry-rules/${ruleId}/enabled`, zoneEntryRule, 'Could not update the rule.', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }),
     });
+  },
+  async activityChat(id: string, input: ActivityChatInput) {
+    try {
+      return await request(`${cameraPath(id)}/activity-chat`, activityChatResponse,
+        'Could not get an answer from the chat model. Try again.', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+        });
+    } catch (error) {
+      if (error instanceof CameraApiError && error.status === 503) {
+        throw new Error('Investigation chat is unavailable. Configure OPENROUTER_API_KEY on the server.', { cause: error });
+      }
+      throw error;
+    }
   },
   activityPasses(id: string, signal: AbortSignal) {
     return request(`${cameraPath(id)}/zone-activity`, zoneActivityPasses, 'Could not load replay passes.', { signal });

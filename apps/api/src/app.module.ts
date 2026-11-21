@@ -13,6 +13,7 @@ import { CameraEndpointsController } from './camera-endpoints.controller.js';
 import { ClipStorage } from './clip-storage.js';
 import { IpCameraService } from './ip-camera.service.js';
 import { ReplayService } from './replay.service.js';
+import { ActivityChatService } from './activity-chat.service.js';
 
 @Controller('api')
 class HealthController {
@@ -34,6 +35,6 @@ class HealthController {
 
 @Module({
   controllers: [HealthController, AuthController, CamerasController, CameraEndpointsController],
-  providers: [DatabaseService, AuthService, ClipStorage, ReplayService, IpCameraService],
+  providers: [DatabaseService, AuthService, ClipStorage, ReplayService, IpCameraService, ActivityChatService],
 })
 export class AppModule {}

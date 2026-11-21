@@ -70,3 +70,5 @@ export { zoneEntryEvidence, zoneEntryHistory, zoneEntryRule, zoneEntryRuleInput,
 export type { ZoneCrossingDirection, ZoneEntryEvent, ZoneEntryRule, ZoneEntryRuleInput, ZoneRuleEventType } from './zone-entry.js';
 export { zoneActivity, zoneActivityFrame, zoneActivityPasses, zoneActivityRuleKey } from './zone-activity.js';
 export type { ZoneActivity, ZoneActivityFrame } from './zone-activity.js';
+export { activityChatInput, activityChatResponse, activityQuery, maxActivityQuestionLength } from './activity-chat.js';
+export type { ActivityChatInput, ActivityChatSource, ActivityQuery } from './activity-chat.js';

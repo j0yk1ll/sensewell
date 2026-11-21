@@ -47,6 +47,8 @@ services:
       CLIP_STORAGE_DIR: /app/clips
       RECORDING_STORAGE_DIR: /app/recordings
       REPLAY_DETECTOR_URL: tcp://detector:8000
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
     volumes:
       - camera-clips:/app/clips
       - camera-recordings:/app/recordings

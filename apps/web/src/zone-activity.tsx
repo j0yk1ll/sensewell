@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatClipTime } from '@/lib/utils';
 import { cameraApi } from './camera-api';
+import { ActivityChat } from './activity-chat';
 import { DetectionBox, ZoneOverlay } from './zone-overlay';
 
 type RuleActivity = ZoneActivity['rules'][number];
@@ -82,6 +83,7 @@ export function ZoneActivityPanel({ id, tenantId, durationMs, replayActive }: {
           <Button type="submit" variant="outline">Show occupancy</Button>
         </form>
       </div>}
+      {passId && <ActivityChat cameraId={id} passId={passId} />}
       {activity.isPlaceholderData && <p role="status" className="text-sm text-slate-600">Updating occupancy…</p>}
       {data && (coverage
         ? <p className="text-sm text-slate-600">Analyzed observations from {time(coverage.firstMs)} to {time(coverage.lastMs)}

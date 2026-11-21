@@ -6,7 +6,7 @@ import {
   Param, ParseUUIDPipe, PayloadTooLargeException, Post, Put, Query, Req, Res,
   ServiceUnavailableException, UnsupportedMediaTypeException,
 } from '@nestjs/common';
-import { cameraName, cameraZoneInput, ipCameraInput, maxCameraNameLength, maxClipBytes, maxClipMiB, replayOptions, zoneEntryRuleInput, zoneEntryRuleToggle } from '@sensewell/contracts';
+import { activityChatInput, cameraName, cameraZoneInput, ipCameraInput, maxCameraNameLength, maxClipBytes, maxClipMiB, replayOptions, zoneEntryRuleInput, zoneEntryRuleToggle } from '@sensewell/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AuthService } from './auth.js';
 import { ClipStorage, evidenceWindow } from './clip-storage.js';
@@ -15,6 +15,7 @@ import { IpCameraService } from './ip-camera.service.js';
 import { cameraStream, encryptStream } from './ip-camera-source.js';
 import { ReplayService } from './replay.service.js';
 import { summarizeZoneActivity } from './zone-activity.js';
+import { ActivityChatService } from './activity-chat.service.js';
 
 const privateFootageHeaders = {
   'Cache-Control': 'private, no-store',
@@ -55,6 +56,7 @@ export class CamerasController {
     private readonly clips: ClipStorage,
     private readonly replay: ReplayService,
     private readonly ipCameras: IpCameraService,
+    private readonly chat: ActivityChatService,
   ) {}
 
   @Get()
@@ -259,6 +261,20 @@ export class CamerasController {
     const rule = await this.database.zoneEntryRules.setEnabled(tenantId, id, ruleId, input.data.enabled);
     if (!rule) throw new NotFoundException('Zone-entry rule not found.');
     return rule;
+  }
+
+  @Post(':id/activity-chat')
+  @HttpCode(200)
+  @Header('Cache-Control', 'private, no-store')
+  async activityChat(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: FastifyRequest,
+    @Body() body: unknown,
+  ) {
+    const { tenantId } = await this.requireSyntheticCamera(request, id);
+    const input = activityChatInput.safeParse(body);
+    if (!input.success) throw new BadRequestException('Enter a question about the recorded activity.');
+    return this.chat.ask(tenantId, id, input.data);
   }
 
   @Get(':id/zone-activity')

@@ -11,12 +11,14 @@ type RuleTotals = {
   gaps: Map<string, RuleActivity['gaps'][number]>;
 };
 
-export function summarizeZoneActivity(passId: string, frames: EvidenceFrame[], active: boolean, atMs?: number): ZoneActivity {
+export function summarizeZoneActivity(
+  passId: string, frames: EvidenceFrame[], active: boolean, atMs?: number, coverageEndMs = frames.at(-1)?.sourceMs,
+): ZoneActivity {
   const first = frames[0];
   const last = frames.at(-1);
   const coverage = first && last ? { firstMs: first.sourceMs, lastMs: last.sourceMs } : null;
   const target = atMs ?? last?.sourceMs;
-  const occupancyFrame = target !== undefined && last && target <= last.sourceMs
+  const occupancyFrame = target !== undefined && coverageEndMs !== undefined && target <= coverageEndMs
     ? frames.findLast(({ sourceMs }) => sourceMs <= target && target - sourceMs <= confirmationGapMs)
     : undefined;
   const rules = new Map<string, RuleTotals>();
