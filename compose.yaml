@@ -49,6 +49,8 @@ services:
       REPLAY_DETECTOR_URL: tcp://detector:8000
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
+      LLAMA_CPP_CHAT_URL: ${LLAMA_CPP_CHAT_URL:-}
+      LLAMA_CPP_MODEL: ${LLAMA_CPP_MODEL:-}
     volumes:
       - camera-clips:/app/clips
       - camera-recordings:/app/recordings

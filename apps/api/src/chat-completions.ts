@@ -1,16 +1,52 @@
 import { setTimeout } from 'node:timers/promises';
-import { BadGatewayException, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { BadGatewayException, HttpException, HttpStatus, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { activityQuery } from '@sensewell/contracts';
 
-const logger = new Logger('OpenRouter');
+const logger = new Logger('ChatCompletions');
+type ChatBackend = {
+  kind: 'openrouter';
+  url: string;
+  model: string;
+  apiKey: string;
+} | {
+  kind: 'llama.cpp';
+  url: string;
+  model: string;
+};
+
+export function configuredChatBackend(): ChatBackend {
+  const localUrl = process.env.LLAMA_CPP_CHAT_URL?.trim();
+  if (localUrl) {
+    const model = process.env.LLAMA_CPP_MODEL?.trim();
+    const url = URL.parse(localUrl);
+    if (!model || !url || !['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+      throw new ServiceUnavailableException('Configure a valid llama.cpp chat URL and model on the server.');
+    }
+    return { kind: 'llama.cpp', url: url.href, model };
+  }
+  const apiKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (!apiKey) throw new ServiceUnavailableException('Configure a llama.cpp endpoint or an OpenRouter API key on the server.');
+  return {
+    kind: 'openrouter',
+    url: 'https://openrouter.ai/api/v1/chat/completions',
+    model: process.env.OPENROUTER_MODEL?.trim() || 'google/gemma-4-26b-a4b-it:free',
+    apiKey,
+  };
+}
+
 const toolName = 'inspect_activity';
-const tool = {
+const activityTool = {
   type: 'function',
   function: {
     name: toolName,
     description: 'Query recorded observations and derived crossings, distinct entrants, occupancy, dwell and supporting timestamps for a replay pass.',
-    parameters: activityQuery.toJSONSchema({ target: 'openapi-3.0', io: 'input' }),
   },
+};
+
+const toolSchemaOptions = { target: 'openapi-3.0', io: 'input' } as const;
+const parameters = {
+  openrouter: activityQuery.omit({ clipRangeSeconds: true, occupancyAtSeconds: true, confidencePercent: true }).toJSONSchema(toolSchemaOptions),
+  'llama.cpp': activityQuery.omit({ fromMs: true, toMs: true, atMs: true, minimumConfidence: true }).toJSONSchema(toolSchemaOptions),
 };
 
 type ToolCall = {
@@ -24,7 +60,7 @@ type Message =
   | { role: 'assistant'; content: string | null; tool_calls: ToolCall[]; reasoning_details?: unknown[] }
   | { role: 'tool'; content: string; tool_call_id: string };
 
-async function rateLimit(response: Response) {
+async function rateLimit(response: Response, provider: string) {
   const payload = await response.json().catch(() => undefined);
   const source = payload?.error?.metadata?.limit_source;
   const daily = source === 'openrouter_free_tier_daily';
@@ -40,30 +76,38 @@ async function rateLimit(response: Response) {
   const cooldownMs = waitMs !== undefined && Number.isFinite(waitMs) ? Math.max(0, waitMs) : undefined;
   const waitSeconds = cooldownMs === undefined ? undefined : Math.ceil(cooldownMs / 1000);
   const reason = daily ? 'daily free-model quota' : source === 'upstream_provider_shared_pool' ? 'provider capacity' : 'request rate';
-  logger.warn(`OpenRouter rate limited chat (${reason})`);
+  logger.warn(`${provider} rate limited chat (${reason})`);
   const message = daily
     ? 'OpenRouter’s daily free-model quota has been reached. Try again after midnight UTC.'
     : waitSeconds
-      ? `OpenRouter is rate limiting chat. Try again in ${waitSeconds} seconds.`
-      : 'OpenRouter is rate limiting chat. Try again shortly.';
+      ? `${provider} is rate limiting chat. Try again in ${waitSeconds} seconds.`
+      : `${provider} is rate limiting chat. Try again shortly.`;
   return { retryMs: daily ? Infinity : (cooldownMs ?? 1000), message };
 }
 
-export async function askOpenRouter(
-  apiKey: string, model: string, instructions: string, question: string, inspect: (args: string) => Promise<unknown>,
+export async function askChatModel(
+  backend: ChatBackend, instructions: string, question: string, inspect: (args: string) => Promise<unknown>,
 ) {
   const messages: Message[] = [{ role: 'system', content: instructions }, { role: 'user', content: question }];
   const signal = AbortSignal.timeout(90_000);
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (backend.kind === 'openrouter') headers.Authorization = `Bearer ${backend.apiKey}`;
+  const options = backend.kind === 'openrouter'
+    ? { provider: { require_parameters: true } }
+    : { chat_template_kwargs: { enable_thinking: false }, temperature: 0 };
+  const tool = { ...activityTool, function: { ...activityTool.function, parameters: parameters[backend.kind] } };
+  const provider = backend.kind === 'openrouter' ? 'OpenRouter' : 'llama.cpp';
   let callCount = 0;
   let retried = false;
   for (let round = 0; round < 5; round++) {
     const body = JSON.stringify({
-      model, messages, tools: [tool], tool_choice: round === 0 ? 'required' : 'auto',
-      provider: { require_parameters: true }, max_tokens: 2048,
+      model: backend.model, messages, tools: [tool], tool_choice: round === 0 ? 'required' : 'auto',
+      ...options, max_tokens: 2048,
     });
-    const request = () => fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const request = () => fetch(backend.url, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      headers,
+      redirect: 'error',
       body,
       signal,
     }).catch(() => {
@@ -71,19 +115,19 @@ export async function askOpenRouter(
     });
     let response = await request();
     if (response.status === 429) {
-      let limit = await rateLimit(response);
+      let limit = await rateLimit(response, provider);
       if (!retried && limit.retryMs <= 5000) {
         retried = true;
         await setTimeout(limit.retryMs, undefined, { signal }).catch(() => {
           throw new HttpException(limit.message, HttpStatus.TOO_MANY_REQUESTS);
         });
         response = await request();
-        if (response.status === 429) limit = await rateLimit(response);
+        if (response.status === 429) limit = await rateLimit(response, provider);
       }
       if (response.status === 429) throw new HttpException(limit.message, HttpStatus.TOO_MANY_REQUESTS);
     }
     if (!response.ok) {
-      logger.warn(`Chat completion returned HTTP ${response.status}`);
+      logger.warn(`${provider} chat completion returned HTTP ${response.status}`);
       throw new BadGatewayException('The chat model could not respond. Try again.');
     }
     const payload = await response.json().catch(() => undefined);

@@ -1,14 +1,12 @@
-import { Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { activityQuery, type ActivityChatInput, type ActivityChatSource } from '@sensewell/contracts';
 import { investigateActivity } from './activity-investigation.js';
 import { DatabaseService } from './database.service.js';
-import { askOpenRouter } from './openrouter.js';
+import { askChatModel, configuredChatBackend } from './chat-completions.js';
 import { ReplayService } from './replay.service.js';
 
-const defaultModel = 'google/gemma-4-26b-a4b-it:free';
-
 const instructions = `You answer warehouse operators' questions about recorded zone activity.
-Use inspect_activity for factual answers. Convert clip time (including mm:ss) to source milliseconds in tool arguments.
+Use inspect_activity for factual answers.
 Use the selected camera and pass unless the operator requests another. A named synthetic camera is its source recording.
 Pass an explicit confidence or possible-crossing preference to the tool. Use earlier operator questions only to interpret follow-ups.
 Report confirmed and possible crossings separately. Include possible entrants in the distinct-track estimate only when requested.
@@ -41,8 +39,7 @@ export class ActivityChatService {
     const selectedPasses = await this.database.zoneActivity.passes(tenantId, selected.id);
     const selectedPass = input.passId ? selectedPasses.find(({ id }) => id === input.passId) : selectedPasses[0];
     if (input.passId && !selectedPass) throw new NotFoundException('Replay pass not found.');
-    const apiKey = process.env.OPENROUTER_API_KEY?.trim();
-    if (!apiKey) throw new ServiceUnavailableException('Investigation chat is unavailable. Configure OPENROUTER_API_KEY on the server.');
+    const backend = configuredChatBackend();
 
     const sources: ActivityChatSource[] = [];
     let unavailableReason = 'No recorded evidence was found for this question.';
@@ -61,11 +58,21 @@ export class ActivityChatService {
       cameras,
       previousQuestions: input.previousQuestions ?? [],
     };
-    const answer = await askOpenRouter(apiKey, process.env.OPENROUTER_MODEL?.trim() || defaultModel,
-      `${instructions}\nOperator context (JSON): ${JSON.stringify(context)}`, input.question, async (args) => {
+    const timeInstructions = backend.kind === 'llama.cpp'
+      ? 'For a requested clip range, set clipRangeSeconds to the string "start-end". Copy decimal seconds exactly. For the first 30 seconds use "0-30". For mm:ss, convert to seconds. Use occupancyAtSeconds only for a requested occupancy instant. Copy a stated percentage into confidencePercent.'
+      : 'Convert clip time (including mm:ss) to source milliseconds in tool arguments.';
+    const answer = await askChatModel(backend,
+      `${instructions}\n${timeInstructions}\nOperator context (JSON): ${JSON.stringify(context)}`, input.question, async (args) => {
         const parsed = parseQuery(args);
         if (!parsed?.success) return { error: 'Use the argument types in the tool schema.' };
-        const query = parsed.data;
+        const { clipRangeSeconds, occupancyAtSeconds, confidencePercent, ...argsInMs } = parsed.data;
+        const query = {
+          ...argsInMs,
+          fromMs: clipRangeSeconds ? Math.round(clipRangeSeconds[0] * 1000) : argsInMs.fromMs,
+          toMs: clipRangeSeconds ? Math.round(clipRangeSeconds[1] * 1000) : argsInMs.toMs,
+          atMs: occupancyAtSeconds === undefined ? argsInMs.atMs : Math.round(occupancyAtSeconds * 1000),
+          minimumConfidence: confidencePercent === undefined ? argsInMs.minimumConfidence : confidencePercent / 100,
+        };
         const { camera: cameraName, passId, passNumber, zone, fromMs = 0, toMs, atMs } = query;
         const matching = cameraName === undefined ? [selected] : cameras.filter(({ id, name }) =>
           id === cameraName || name.toLowerCase() === cameraName.toLowerCase());

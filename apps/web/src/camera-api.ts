@@ -129,7 +129,7 @@ export const cameraApi = {
         });
     } catch (error) {
       if (error instanceof CameraApiError && error.status === 503) {
-        throw new Error('Investigation chat is unavailable. Configure OPENROUTER_API_KEY on the server.', { cause: error });
+        throw new Error('Investigation chat is unavailable. Check the server’s model configuration.', { cause: error });
       }
       throw error;
     }

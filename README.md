@@ -34,11 +34,20 @@ The Compose secret and origins are for local use. Set `BETTER_AUTH_SECRET` to a 
 
 ## Investigate recorded activity
 
-Set `OPENROUTER_API_KEY` in your environment or local Compose `.env` before starting the app. Get a key from [OpenRouter](https://openrouter.ai/settings/keys). The API defaults to [Gemma 4 26B A4B (free)](https://openrouter.ai/google/gemma-4-26b-a4b-it:free). To override it, set `OPENROUTER_MODEL` to an OpenRouter model ID with tool calling support. The app makes the OpenRouter requests over HTTPS. A chat question usually makes at least two model requests, one to select the evidence query and one to answer. The free model is subject to OpenRouter quota and provider capacity limits.
+To use a self-hosted llama.cpp server, set the following in the Compose `.env` file or the API process environment.
+
+```dotenv
+LLAMA_CPP_CHAT_URL=http://jetson.local:8000/v1/chat/completions
+LLAMA_CPP_MODEL=unsloth/gemma-4-E2B-it-GGUF:Q4_K_S
+```
+
+The server must support native tool calls. If the app container cannot resolve a `.local` hostname, put the Jetson's LAN IP address in the URL. When configured, llama.cpp handles the full conversation, including evidence tool results, over the supplied URL. Run `docker compose up -d --build app` to apply the configuration.
+
+For hosted chat, leave `LLAMA_CPP_CHAT_URL` unset. Set `OPENROUTER_API_KEY` in your environment or local Compose `.env` before starting the app. Get a key from [OpenRouter](https://openrouter.ai/settings/keys). The API defaults to [Gemma 4 26B A4B (free)](https://openrouter.ai/google/gemma-4-26b-a4b-it:free). To override it, set `OPENROUTER_MODEL` to an OpenRouter model ID with tool calling support. The app makes the OpenRouter requests over HTTPS. A chat question usually makes at least two model requests, one to select the evidence query and one to answer. The free model is subject to OpenRouter quota and provider capacity limits.
 
 After a Synthetic Camera has started collecting observations, choose a pass under **Zone activity** and enter a question under **Investigate footage**. For example, “How many people entered the rack-side zone between 0:20 and 0:55 at 35% confidence? Include possible crossings and show me the evidence.” Ask for occupancy at a clip time or for complete visit durations in a range. Open a supporting timestamp to view the source clip at that time. The answer identifies the replay pass and shows the analysis cutoff and incomplete coverage when applicable.
 
-Chat evaluates recorded detections against the current saved zones using the requested confidence cutoff, or 50% by default. Results leave saved rules and event history intact. A lower cutoff only uses detections that the detector originally recorded. Confirmed and possible crossings are reported separately, and distinct entrants are estimates based on tracks within a pass. OpenRouter receives the question, recent questions for follow-ups, authorized replay context, and the text results of evidence queries. Source video and still frames stay within Sensewell.
+Chat evaluates recorded detections against the current saved zones using the requested confidence cutoff, or 50% by default. Results leave saved rules and event history intact. A lower cutoff only uses detections that the detector originally recorded. Confirmed and possible crossings are reported separately, and distinct entrants are estimates based on tracks within a pass. The configured model server receives the question, recent questions for follow-ups, authorized replay context, and the text results of evidence queries. Source video and still frames stay within Sensewell.
 
 ## Connect and record an IP camera
 

@@ -11,6 +11,16 @@ export const activityChatInput = z.object({
   passId: z.uuid().optional(),
 });
 
+const sourceSeconds = z.number().min(0).max(Number.MAX_SAFE_INTEGER / 1000);
+const localActivityQueryFields = z.object({
+  clipRangeSeconds: z.string().regex(/^\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?$/)
+    .transform((range) => range.split('-').map(Number))
+    .pipe(z.tuple([sourceSeconds, sourceSeconds])).optional()
+    .describe('Requested time range as a string: start-end in seconds. For 0.05 to 1 second send "0.05-1".'),
+  occupancyAtSeconds: sourceSeconds.optional().describe('Use only if asked how many were inside at a specific time. Omit for a question about entries in a time range.'),
+  confidencePercent: z.number().min(0).max(100).optional().describe('Minimum detection confidence in percent. For 25% send 25.'),
+});
+
 export const activityQuery = z.object({
   camera: z.string().trim().min(1).max(100).optional().describe('Camera ID or exact name. Defaults to the selected camera.'),
   passId: z.uuid().optional().describe('Replay pass ID, when known.'),
@@ -22,7 +32,7 @@ export const activityQuery = z.object({
   minimumConfidence: z.number().min(0).max(1).optional().describe('Minimum detection confidence as a fraction. 20% is 0.2. Defaults to 0.5.'),
   includePossible: z.boolean().optional().describe('Include possible crossings if the operator asks for them. Defaults to false.'),
   objectType: warehouseObjectType.optional().describe('Object class. Defaults to person.'),
-});
+}).extend(localActivityQueryFields.shape);
 
 export const activityChatSource = z.object({
   cameraId: z.uuid(),

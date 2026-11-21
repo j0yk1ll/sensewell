@@ -154,3 +154,50 @@ test('reports the remaining wait when OpenRouter requests a longer cooldown', as
     { status: 429, message: /30 seconds/ });
   assert.equal(requests.length, 1);
 });
+
+test('uses an unauthenticated llama.cpp endpoint without OpenRouter routing options', async (t) => {
+  const endpoint = 'http://jetson.local:8000/v1/chat/completions';
+  const model = 'unsloth/gemma-4-E2B-it-GGUF:Q4_K_S';
+  const previousUrl = process.env.LLAMA_CPP_CHAT_URL;
+  const previousModel = process.env.LLAMA_CPP_MODEL;
+  process.env.LLAMA_CPP_CHAT_URL = endpoint;
+  process.env.LLAMA_CPP_MODEL = model;
+  t.after(() => {
+    if (previousUrl === undefined) delete process.env.LLAMA_CPP_CHAT_URL;
+    else process.env.LLAMA_CPP_CHAT_URL = previousUrl;
+    if (previousModel === undefined) delete process.env.LLAMA_CPP_MODEL;
+    else process.env.LLAMA_CPP_MODEL = previousModel;
+  });
+
+  const requests = [];
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(url, endpoint);
+    assert.deepEqual(options.headers, { 'Content-Type': 'application/json' });
+    const request = JSON.parse(options.body);
+    requests.push(request);
+    assert.equal(request.model, model);
+    assert.equal(request.provider, undefined);
+    assert.deepEqual(request.chat_template_kwargs, { enable_thinking: false });
+    assert.ok(request.tools[0].function.parameters.properties.clipRangeSeconds);
+    assert.equal(request.tools[0].function.parameters.properties.toMs, undefined);
+    const message = request.tool_choice === 'required'
+      ? { role: 'assistant', content: '', tool_calls: [{
+          id: 'jetson_call', type: 'function', function: {
+            name: 'inspect_activity', arguments: '{"clipRangeSeconds":"0.05-0.2","confidencePercent":25}',
+          },
+        }] }
+      : { role: 'assistant', content: 'One confirmed entry.' };
+    return globalThis.Response.json({ choices: [{ message }] });
+  });
+
+  const result = await setup().activityChat(camera.id, { tenant: tenantId }, { question: 'How many entries through 0.2 seconds at 25%?' });
+  assert.equal(result.answer, 'One confirmed entry.');
+  assert.ok(result.sources[0].timestamps.includes(100));
+  const toolMessage = requests[1].messages.at(-1);
+  assert.equal(toolMessage.tool_call_id, 'jetson_call');
+  const evidence = JSON.parse(toolMessage.content);
+  assert.equal(evidence.source.fromMs, 50);
+  assert.equal(evidence.source.toMs, 200);
+  assert.equal(evidence.minimumConfidence, 0.25);
+  assert.equal(evidence.zones[0].confirmedEntries, 1);
+});
