@@ -26,22 +26,40 @@ function boxOverlap(a: PersonDetection['box'], b: PersonDetection['box']) {
   return intersection / union;
 }
 
-function insideZone([left, top, right, bottom]: PersonDetection['box'], points: ZonePoint[]) {
-  // Intersect the polygon with a line just above the bottom of the detection box.
-  const y = bottom - (bottom - top) * 0.02;
-  const crossings: number[] = [];
-  for (const [index, a] of points.entries()) {
-    const b = points[(index + 1) % points.length]!;
-    if ((a.y > y) !== (b.y > y)) {
-      crossings.push(a.x + (y - a.y) * (b.x - a.x) / (b.y - a.y));
+function clipAtBound(points: ZonePoint[], axis: keyof ZonePoint, bound: number, sign: number) {
+  const clipped: ZonePoint[] = [];
+  for (const [index, end] of points.entries()) {
+    const start = points[(index + points.length - 1) % points.length]!;
+    const from = sign * (start[axis] - bound);
+    const to = sign * (end[axis] - bound);
+    if ((from >= 0) !== (to >= 0)) {
+      const fraction = from / (from - to);
+      clipped.push({
+        x: start.x + fraction * (end.x - start.x),
+        y: start.y + fraction * (end.y - start.y),
+        [axis]: bound,
+      });
     }
+    if (to >= 0) clipped.push(end);
   }
-  crossings.sort((a, b) => a - b);
-  let covered = 0;
-  for (let index = 0; index + 1 < crossings.length; index += 2) {
-    covered += Math.max(0, Math.min(right, crossings[index + 1]!) - Math.max(left, crossings[index]!));
-  }
-  return covered >= (right - left) / 2;
+  return clipped;
+}
+
+function overlapsZone([left, top, right, bottom]: PersonDetection['box'], points: ZonePoint[]) {
+  // Clip the zone polygon against all four sides of the detection box.
+  let overlap = clipAtBound(points, 'x', left, 1);
+  overlap = clipAtBound(overlap, 'x', right, -1);
+  overlap = clipAtBound(overlap, 'y', top, 1);
+  overlap = clipAtBound(overlap, 'y', bottom, -1);
+  const origin = overlap[0];
+  if (!origin) return false;
+
+  // A shared edge or corner has zero area.
+  const twiceArea = overlap.reduce((area, point, index) => {
+    const next = overlap[(index + 1) % overlap.length]!;
+    return area + (point.x - origin.x) * (next.y - origin.y) - (next.x - origin.x) * (point.y - origin.y);
+  }, 0);
+  return Math.abs(twiceArea) > Number.EPSILON;
 }
 
 export class ZoneEntryEvaluator {
@@ -75,7 +93,7 @@ export class ZoneEntryEvaluator {
       const zones: Track['zones'] = new Map();
       for (const { rule, version } of versions) {
         if (person.confidence < rule.minimumConfidence) continue;
-        const inside = insideZone(person.box, rule.points);
+        const inside = overlapsZone(person.box, rule.points);
         zones.set(rule.id, { inside, version });
         const before = previous?.zones.get(rule.id);
         if (continuous && before?.version === version && before.inside !== inside) {

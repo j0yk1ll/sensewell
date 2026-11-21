@@ -2,7 +2,7 @@
 
 Replay the 60-second Warehouse_027 / Camera_0004 clip with the RF-DETR Small Warehouse model. Footage is licensed under CC BY 4.0. Sensewell adds the zone and detection overlays. [NVIDIA PhysicalAI-SmartSpaces source clip](https://huggingface.co/datasets/nvidia/PhysicalAI-SmartSpaces/blob/main/MTMC_Tracking_2026/test/Warehouse_027/videos/Camera_0004.mp4) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 
-## Annotated crossing
+## Original annotated crossing
 
 Draw the **Rack-side floor** zone along the left side of the yellow tape as seen from the camera. Include the short stretch of floor past the end of the tape. These points are fractions of the source image measured from the top left, in drawing order.
 
@@ -16,7 +16,7 @@ Draw the **Rack-side floor** zone along the left side of the yellow tape as seen
 | Left edge behind the racks | .080 | .400 |
 | Left frame edge | .008 | .520 |
 
-Create **Rack-side entry** with a minimum confidence of **35%**, then enable it before starting replay at 1×. Follow the person in a light sweater and dark trousers who is walking away from the camera on the right side of the tape.
+The original timing run used a rule named **Rack-side entry**, a minimum confidence of **35%**, and replay at 1×. Follow the person in a light sweater and dark trousers who is walking away from the camera on the right side of the tape.
 
 | Source time | What to inspect |
 | --- | --- |
@@ -24,13 +24,13 @@ Create **Rack-side entry** with a minimum confidence of **35%**, then enable it 
 | 0:13.800 | The person steps left at the end of the tape toward the racks. The qualifying inside detection is 38%. This was the confirmed entry on replay pass 1 of the measured run. |
 | 0:14.100 | The person continues past the tape tip. The frame helps distinguish the entrant from the second person behind them. |
 
-In **Event history**, open **Rack-side entry** at **0:13.800**. The analyzed frame shows the saved zone and the entrant's box. The source clip opens at the same time. The pass number and ID identify the original replay pass if the clip loops. The event can land on a nearby sampled frame depending on when inference is available.
+In the original run, **Event history** showed **Rack-side entry** at **0:13.800**. The analyzed frame shows the saved zone and the entrant's box. The source clip opens at the same time. The pass number and ID identify the original replay pass if the clip loops. That run used a near-feet overlap criterion. New passes use the box-overlap criterion below, which can shift timestamps and change which crossings are confirmed.
 
 ## Rule behavior
 
-A person is inside when at least half of a horizontal line 2% up from the bottom of their detection box lies in the polygon. This places the comparison near their feet. The tracker requires a unique one-to-one match with at least 0.30 box intersection over union and can recover a match within 500 ms. An entry requires qualifying detections on consecutive analyzed frames at most 400 ms apart. This accounts for replay frames skipped while CPU inference is busy.
+A detection is inside when its bounding box and the zone polygon share positive area. Touching an edge or corner leaves it outside. A box can overlap before a person visibly steps into the zone, so the crossing time is an estimate in image space. The tracker requires a unique one-to-one match with at least 0.30 box intersection over union and can recover a match within 500 ms. A confirmed entry or exit requires qualifying detections on consecutive analyzed frames at most 400 ms apart. This accounts for replay frames skipped while CPU inference is busy.
 
-A missing person or a detection below the rule's threshold leaves their position unknown. A new replay pass starts with fresh tracks. The detector emits detections from 25% confidence upward, and the rule's threshold applies to both detections that establish the entry.
+A missing person or a detection below the rule's threshold leaves their position unknown. A person first detected inside has an unknown entry. A new replay pass starts with fresh tracks. The detector emits detections from 25% confidence upward, and the rule's threshold applies to both detections that establish the entry.
 
 ## Timing at 1×
 
