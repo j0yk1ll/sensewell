@@ -68,3 +68,5 @@ export { detectorFrameAnalysis, replayFrameAnalysis, replayImage, warehouseObjec
 export type { ObjectDetection, ReplayFrameAnalysis, ReplayImage, WarehouseObjectType } from './replay-analysis.js';
 export { zoneEntryEvidence, zoneEntryHistory, zoneEntryRule, zoneEntryRuleInput, zoneEntryRuleList, zoneEntryRuleToggle, zoneRuleEventType } from './zone-entry.js';
 export type { ZoneCrossingDirection, ZoneEntryEvent, ZoneEntryRule, ZoneEntryRuleInput, ZoneRuleEventType } from './zone-entry.js';
+export { zoneActivity, zoneActivityFrame, zoneActivityPasses, zoneActivityRuleKey } from './zone-activity.js';
+export type { ZoneActivity, ZoneActivityFrame } from './zone-activity.js';

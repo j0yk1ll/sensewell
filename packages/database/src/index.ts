@@ -10,7 +10,8 @@ export { cameraRecordings, cameras, cameraZones, operationalEvents, replayObserv
 
 type TenantTransaction = Parameters<Parameters<ReturnType<typeof drizzle>['transaction']>[0]>[0];
 type RuleInput = Pick<typeof zoneEntryRules.$inferInsert, 'name' | 'zoneId' | 'minimumConfidence' | 'eventType' | 'objectTypes'>;
-type Observation = Omit<typeof replayObservations.$inferInsert, 'tenantId' | 'eventJpeg'>;
+type Observation = Omit<typeof replayObservations.$inferInsert, 'tenantId' | 'eventJpeg' | 'zoneActivity'>;
+type Crossing = { rule: ActiveRule; detectionIndex: number; direction: (typeof replayZoneEntries.$inferSelect)['direction'] };
 type ActiveRule = Required<RuleInput> & { id: string; revision: number; zoneName: string; points: ZoneInput['points'] };
 type ZoneInput = Pick<typeof cameraZones.$inferInsert, 'name' | 'points'>;
 
@@ -46,6 +47,14 @@ export function createDatabase({ max }: { max?: number } = {}) {
     name: cameras.name,
     durationMs: cameras.durationMs,
   };
+  const replayScope = (tenantId: string, cameraId: string) =>
+    and(eq(replayPasses.tenantId, tenantId), eq(replayPasses.cameraId, cameraId));
+  const latestRun = (tx: TenantTransaction, tenantId: string, cameraId: string) =>
+    tx.select({ runId: replayPasses.runId }).from(replayPasses).where(replayScope(tenantId, cameraId))
+      .orderBy(desc(replayPasses.startedAt), desc(replayPasses.id)).limit(1);
+  const observationPass = (tenantId: string, cameraId: string, passId: string) => and(
+    eq(replayObservations.tenantId, tenantId), eq(replayObservations.cameraId, cameraId), eq(replayObservations.passId, passId),
+  );
   const recordingFields = {
     id: cameraRecordings.id,
     startedAt: cameraRecordings.startedAt,
@@ -141,7 +150,7 @@ export function createDatabase({ max }: { max?: number } = {}) {
       async add(tenantId: string, camera: Pick<typeof cameras.$inferInsert, 'id' | 'name' | 'durationMs' | 'startOffsetMs'>) {
         await forTenant(tenantId, (tx) => tx.insert(cameras).values({ ...camera, tenantId }));
       },
-      async recordPass(tenantId: string, pass: { cameraId: string; id: string; runId: string }) {
+      async recordPass(tenantId: string, pass: Pick<typeof replayPasses.$inferInsert, 'cameraId' | 'id' | 'runId' | 'passNumber'>) {
         await forTenant(tenantId, (tx) => tx.insert(replayPasses).values({ ...pass, tenantId }));
       },
       async addIp(tenantId: string, camera: { id: string; name: string; encryptedStream: string }) {
@@ -201,9 +210,6 @@ export function createDatabase({ max }: { max?: number } = {}) {
     zoneEntries: {
       history(tenantId: string, cameraId: string) {
         return forTenant(tenantId, (tx) => {
-          const latestRun = tx.select({ runId: replayPasses.runId }).from(replayPasses)
-            .where(and(eq(replayPasses.tenantId, tenantId), eq(replayPasses.cameraId, cameraId)))
-            .orderBy(desc(replayPasses.startedAt), desc(replayPasses.id)).limit(1);
           return tx.select(historyFields).from(replayZoneEntries)
             .innerJoin(operationalEvents, entryEvent).innerJoin(cameras, entryCamera)
             .innerJoin(replayPasses, and(
@@ -211,7 +217,7 @@ export function createDatabase({ max }: { max?: number } = {}) {
               eq(replayPasses.cameraId, replayZoneEntries.cameraId),
               eq(replayPasses.id, replayZoneEntries.passId),
             ))
-            .where(and(entryScope(tenantId, cameraId), eq(replayPasses.runId, latestRun)))
+            .where(and(entryScope(tenantId, cameraId), eq(replayPasses.runId, latestRun(tx, tenantId, cameraId))))
             .orderBy(desc(operationalEvents.occurredAt), desc(replayZoneEntries.eventId)).limit(100);
         });
       },
@@ -230,11 +236,34 @@ export function createDatabase({ max }: { max?: number } = {}) {
         return row;
       },
     },
+    zoneActivity: {
+      async passes(tenantId: string, cameraId: string) {
+        const passes = await forTenant(tenantId, (tx) => tx.select({
+          id: replayPasses.id, passNumber: replayPasses.passNumber, startedAt: replayPasses.startedAt,
+        }).from(replayPasses).where(and(
+          replayScope(tenantId, cameraId), isNotNull(replayPasses.passNumber),
+        )).orderBy(desc(replayPasses.startedAt), desc(replayPasses.passNumber), desc(replayPasses.id)));
+        return passes.flatMap(({ id, passNumber, startedAt }) => passNumber === null ? [] : [{ id, passNumber, startedAt }]);
+      },
+      frames(tenantId: string, cameraId: string, passId: string) {
+        return forTenant(tenantId, async (tx) => {
+          const [pass] = await tx.select({ id: replayPasses.id }).from(replayPasses)
+            .where(and(replayScope(tenantId, cameraId), eq(replayPasses.id, passId), isNotNull(replayPasses.passNumber)));
+          if (!pass) return;
+          return tx.select({ sourceMs: replayObservations.sourceMs, evidence: replayObservations.zoneActivity })
+            .from(replayObservations).where(observationPass(tenantId, cameraId, passId))
+            .orderBy(asc(replayObservations.sourceMs));
+        });
+      },
+    },
     observations: {
       recordForReplay(
         tenantId: string,
         frame: Observation & { passNumber: number; occurredAt: Date; jpeg: Buffer },
-        evaluate: (rules: ActiveRule[]) => { rule: ActiveRule; detectionIndex: number; direction: (typeof replayZoneEntries.$inferSelect)['direction'] }[],
+        evaluate: (rules: ActiveRule[]) => {
+          crossings: Crossing[];
+          evidence?: typeof replayObservations.$inferInsert.zoneActivity;
+        },
       ) {
         const { cameraId, passId, passNumber, sourceMs, detections, occurredAt, jpeg } = frame;
         return forTenant(tenantId, async (tx) => {
@@ -255,12 +284,13 @@ export function createDatabase({ max }: { max?: number } = {}) {
           )).where(and(ruleScope(tenantId, cameraId), eq(zoneEntryRules.enabled, true)))
             .for('share', { of: zoneEntryRules });
 
-          const crossings = evaluate(rules);
+          const { crossings, evidence: zoneActivity } = evaluate(rules);
           const [saved] = await tx.insert(replayObservations).values({
-            tenantId, cameraId, passId, sourceMs, detections,
+            tenantId, cameraId, passId, sourceMs, detections, zoneActivity,
             eventJpeg: crossings.length ? jpeg.toString('base64') : null,
           }).onConflictDoNothing().returning({ sourceMs: replayObservations.sourceMs });
-          if (!saved || !crossings.length) return;
+          if (!saved) return false;
+          if (!crossings.length) return true;
 
           const evidence = crossings.map(({ rule, detectionIndex, direction }) => ({
             eventId: randomUUID(), tenantId, cameraId, passId, passNumber, sourceMs,
@@ -270,6 +300,7 @@ export function createDatabase({ max }: { max?: number } = {}) {
           }));
           await tx.insert(operationalEvents).values(evidence.map(({ eventId }) => ({ id: eventId, tenantId, occurredAt })));
           await tx.insert(replayZoneEntries).values(evidence);
+          return true;
         });
       },
       list(tenantId: string, { cameraId, passId, fromMs, toMs }: {
@@ -279,8 +310,7 @@ export function createDatabase({ max }: { max?: number } = {}) {
           cameraId: replayObservations.cameraId, passId: replayObservations.passId,
           sourceMs: replayObservations.sourceMs, detections: replayObservations.detections,
         }).from(replayObservations).where(and(
-          eq(replayObservations.tenantId, tenantId), eq(replayObservations.cameraId, cameraId),
-          eq(replayObservations.passId, passId),
+          observationPass(tenantId, cameraId, passId),
           gte(replayObservations.sourceMs, fromMs), lt(replayObservations.sourceMs, toMs),
         )).orderBy(asc(replayObservations.sourceMs)));
       },

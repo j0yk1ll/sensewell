@@ -13,6 +13,7 @@ import { cameraApi } from './camera-api';
 import { ReplayVideo } from './replay-video';
 import { ZoneEntryRules } from './zone-entry-rules';
 import { ZoneEntryHistory, zoneEntryHistoryKey } from './zone-entry-history';
+import { ZoneActivityPanel } from './zone-activity';
 import { ZoneEditor } from './zone-editor';
 
 const replayLabel = {
@@ -147,6 +148,7 @@ export function CameraViewer({ camera, tenantId }: { camera: SyntheticCamera; te
       {replayViewer}
       <ZoneEntryRules id={camera.id} tenantId={tenantId} />
       <ZoneEntryHistory key={replayVersion} id={camera.id} tenantId={tenantId} replayActive={active} />
+      <ZoneActivityPanel key={replayVersion} id={camera.id} tenantId={tenantId} durationMs={camera.durationMs} replayActive={active} />
     </div>
   );
 }

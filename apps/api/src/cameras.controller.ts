@@ -14,6 +14,7 @@ import { DatabaseService } from './database.service.js';
 import { IpCameraService } from './ip-camera.service.js';
 import { cameraStream, encryptStream } from './ip-camera-source.js';
 import { ReplayService } from './replay.service.js';
+import { summarizeZoneActivity } from './zone-activity.js';
 
 const privateFootageHeaders = {
   'Cache-Control': 'private, no-store',
@@ -258,6 +259,32 @@ export class CamerasController {
     const rule = await this.database.zoneEntryRules.setEnabled(tenantId, id, ruleId, input.data.enabled);
     if (!rule) throw new NotFoundException('Zone-entry rule not found.');
     return rule;
+  }
+
+  @Get(':id/zone-activity')
+  @Header('Cache-Control', 'private, no-store')
+  async zoneActivityPasses(@Param('id', ParseUUIDPipe) id: string, @Req() request: FastifyRequest) {
+    const { tenantId } = await this.requireSyntheticCamera(request, id);
+    return this.database.zoneActivity.passes(tenantId, id);
+  }
+
+  @Get(':id/zone-activity/:passId')
+  @Header('Cache-Control', 'private, no-store')
+  async zoneActivity(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('passId', ParseUUIDPipe) passId: string,
+    @Query('atMs') at: string | undefined,
+    @Req() request: FastifyRequest,
+  ) {
+    const { camera, tenantId } = await this.requireSyntheticCamera(request, id);
+    const atMs = at === undefined ? undefined : Number(at);
+    if (atMs !== undefined && (!/^\d+$/.test(String(at)) || !Number.isSafeInteger(atMs) || atMs > camera.durationMs)) {
+      throw new BadRequestException('Choose an occupancy time within the source clip.');
+    }
+    const active = this.replay.isPassActive(id, passId);
+    const frames = await this.database.zoneActivity.frames(tenantId, id, passId);
+    if (!frames) throw new NotFoundException('Replay pass not found.');
+    return summarizeZoneActivity(passId, frames, active, atMs);
   }
 
   @Get(':id/zone-entry-events')

@@ -1,3 +1,4 @@
+import type { ZoneActivityFrame } from '@sensewell/contracts';
 import { sql } from 'drizzle-orm';
 import { boolean, check, doublePrecision, foreignKey, index, integer, jsonb, pgPolicy, pgRole, pgTable, primaryKey, text, timestamp, unique, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
@@ -114,6 +115,7 @@ export const cameraZones = pgTable('camera_zones', {
 export const replayPasses = pgTable('replay_passes', {
   id: uuid().primaryKey(),
   runId: uuid('run_id').defaultRandom().notNull(),
+  passNumber: integer('pass_number'),
   tenantId: uuid('tenant_id').notNull(),
   cameraId: uuid('camera_id').notNull(),
   startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
@@ -135,6 +137,7 @@ export const replayObservations = pgTable('replay_observations', {
   passId: uuid('pass_id').notNull(),
   sourceMs: integer('source_ms').notNull(),
   eventJpeg: text('event_jpeg'),
+  zoneActivity: jsonb('zone_activity').$type<ZoneActivityFrame>(),
   detections: jsonb('people').$type<{ box: [number, number, number, number]; confidence: number; objectType?: string }[]>().notNull(),
 }, (frame) => [
   tenantIsolation(frame.tenantId),

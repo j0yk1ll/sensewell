@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { formatClipTime } from '@/lib/utils';
 import { cameraApi } from './camera-api';
-import { ZoneOverlay } from './zone-overlay';
+import { DetectionBox, ZoneOverlay } from './zone-overlay';
 
 function replayPosition(event: ZoneEntryEvent) {
   return `Replay pass ${event.passNumber} · ${formatClipTime(event.sourceMs, true)}`;
@@ -138,9 +138,4 @@ function EvidenceClip({ id, tenantId, eventId, window }: {
       </p>
     </div>
   );
-}
-
-function DetectionBox({ box: [left, top, right, bottom] }: { box: [number, number, number, number] }) {
-  return <div aria-hidden="true" className="pointer-events-none absolute border-2 border-amber-300 shadow-[0_0_0_1px_#020617]"
-    style={{ left: `${left * 100}%`, top: `${top * 100}%`, width: `${(right - left) * 100}%`, height: `${(bottom - top) * 100}%` }} />;
 }

@@ -27,7 +27,7 @@ export const zoneEntryRule = zoneEntryRuleInput.extend({
 export type ZoneEntryRule = z.infer<typeof zoneEntryRule>;
 export const zoneEntryRuleList = z.array(zoneEntryRule);
 
-const zoneCrossingDirection = z.enum(['entry', 'exit']);
+export const zoneCrossingDirection = z.enum(['entry', 'exit']);
 export type ZoneCrossingDirection = z.infer<typeof zoneCrossingDirection>;
 
 const zoneEntryEvent = z.object({

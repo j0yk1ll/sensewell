@@ -1,4 +1,4 @@
-import { zoneEntryEvidence, zoneEntryHistory, zoneEntryRule, zoneEntryRuleList, type ZoneEntryRuleInput } from '@sensewell/contracts';
+import { zoneActivity, zoneActivityPasses, zoneEntryEvidence, zoneEntryHistory, zoneEntryRule, zoneEntryRuleList, type ZoneEntryRuleInput } from '@sensewell/contracts';
 import { cameraEndpointSettings, cameraList, cameraZone, cameraZoneList, captureStatus, ipCamera, recordingList, replayImage, replayStatus, syntheticCamera, type CameraZoneInput, type IpCameraInput } from '@sensewell/contracts';
 
 export class CameraApiError extends Error {
@@ -119,6 +119,13 @@ export const cameraApi = {
     return request(`${cameraPath(id)}/zone-entry-rules/${ruleId}/enabled`, zoneEntryRule, 'Could not update the rule.', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }),
     });
+  },
+  activityPasses(id: string, signal: AbortSignal) {
+    return request(`${cameraPath(id)}/zone-activity`, zoneActivityPasses, 'Could not load replay passes.', { signal });
+  },
+  zoneActivity(id: string, passId: string, atMs: number | undefined, signal: AbortSignal) {
+    const query = atMs === undefined ? '' : `?atMs=${atMs}`;
+    return request(`${cameraPath(id)}/zone-activity/${passId}${query}`, zoneActivity, 'Could not load zone activity.', { signal });
   },
   eventHistory(id: string, signal: AbortSignal) {
     return request(`${cameraPath(id)}/zone-entry-events`, zoneEntryHistory, 'Could not load event history.', { signal });

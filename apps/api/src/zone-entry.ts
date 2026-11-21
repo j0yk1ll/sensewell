@@ -1,22 +1,39 @@
-import type { ObjectDetection, ZoneCrossingDirection, ZonePoint, ZoneRuleEventType } from '@sensewell/contracts';
+import { warehouseObjectType, zoneActivityRuleKey, type ObjectDetection, type WarehouseObjectType, type ZoneActivityFrame, type ZoneCrossingDirection, type ZonePoint, type ZoneRuleEventType } from '@sensewell/contracts';
 
 interface EntryRule {
   id: string;
   revision: number;
+  name: string;
+  zoneName: string;
   minimumConfidence: number;
   eventType: ZoneRuleEventType;
   objectTypes: string[];
   points: ZonePoint[];
 }
 
+type RuleFrame = ZoneActivityFrame['rules'][number];
+type Visit = RuleFrame['visits'][number];
+type Sample = Visit['lastInside'];
+type Subject = Pick<RuleFrame, 'ruleId' | 'ruleName' | 'zoneName' | 'objectType'>;
+
+interface ZoneState {
+  subject: Subject;
+  version: string;
+  inside: boolean;
+  sample: Sample;
+  missing?: boolean;
+  visit?: Visit;
+}
+
 interface Track {
+  id: number;
   detection: ObjectDetection;
   sourceMs: number;
-  zones: Map<string, { inside: boolean; version: string }>;
+  zones: Map<string, ZoneState>;
 }
 
 const recoveryMs = 500;
-const confirmationGapMs = 400;
+export const confirmationGapMs = 400;
 const minimumTrackOverlap = 0.3;
 
 function boxOverlap(a: ObjectDetection['box'], b: ObjectDetection['box']) {
@@ -66,46 +83,141 @@ function overlapsZone([left, top, right, bottom]: ObjectDetection['box'], points
 export class ZoneEntryEvaluator {
   private tracks: Track[] = [];
   private lastAnalyzedMs: number | undefined;
+  private nextTrackId = 1;
 
-  reset() {
-    this.tracks = [];
+  interrupt() {
     this.lastAnalyzedMs = undefined;
   }
 
+  checkpoint() {
+    const { tracks, lastAnalyzedMs, nextTrackId } = this;
+    return () => {
+      this.tracks = tracks;
+      this.lastAnalyzedMs = lastAnalyzedMs;
+      this.nextTrackId = nextTrackId;
+    };
+  }
+
   observe<Rule extends EntryRule>(sourceMs: number, detections: ObjectDetection[], rules: Rule[]) {
+    return this.evaluate(sourceMs, detections, rules).crossings;
+  }
+
+  evaluate<Rule extends EntryRule>(sourceMs: number, detections: ObjectDetection[], rules: Rule[]) {
     const tracks = this.tracks.filter((track) => sourceMs - track.sourceMs <= recoveryMs);
     const candidates = detections.map(({ box, objectType }) =>
       tracks.filter((track) => track.detection.objectType === objectType
         && boxOverlap(track.detection.box, box) >= minimumTrackOverlap));
     const candidateCounts = new Map<Track, number>();
+    const uniqueMatches = new Set<Track>();
     for (const matches of candidates) {
       for (const track of matches) candidateCounts.set(track, (candidateCounts.get(track) ?? 0) + 1);
+      if (matches.length === 1) uniqueMatches.add(matches[0]!);
     }
 
     const crossings: { rule: Rule; detection: ObjectDetection; direction: ZoneCrossingDirection }[] = [];
-    const versions = rules.map((rule) => ({ rule, version: JSON.stringify([rule.revision, rule.points]) }));
-    // Keep unmatched tracks briefly. Discard ambiguous associations instead of guessing.
-    this.tracks = tracks.filter((track) => !candidateCounts.has(track));
+    const frames = new Map<string, RuleFrame>();
+    function frameFor(subject: Subject) {
+      const key = zoneActivityRuleKey(subject);
+      let frame = frames.get(key);
+      if (!frame) {
+        frame = { ...subject, inside: null, unknownTrackIds: [], crossings: [], gaps: [], visits: [] };
+        frames.set(key, frame);
+      }
+      return frame;
+    }
+    const subjectFor = (rule: Rule, objectType: WarehouseObjectType): Subject => ({
+      ruleId: rule.id, ruleName: rule.name, zoneName: rule.zoneName, objectType,
+    });
+    const versions = new Map(rules.map((rule) => [rule.id, JSON.stringify([rule.revision, rule.points])]));
+    for (const rule of rules) {
+      for (const objectType of rule.objectTypes) {
+        const parsed = warehouseObjectType.safeParse(objectType);
+        if (parsed.success) frameFor(subjectFor(rule, parsed.data)).inside = [];
+      }
+    }
+
+    const retained = new Map<Track, Track>();
+    const nextTracks: Track[] = [];
+    for (const track of this.tracks) {
+      const count = candidateCounts.get(track) ?? 0;
+      const loss = sourceMs - track.sourceMs > recoveryMs ? 'expired'
+        : count > 1 || (count === 1 && !uniqueMatches.has(track)) ? 'ambiguous' : undefined;
+      const zones: Track['zones'] = new Map();
+      for (const [ruleId, before] of track.zones) {
+        if (!loss && versions.get(ruleId) === before.version) {
+          zones.set(ruleId, before);
+          continue;
+        }
+        const frame = frameFor(before.subject);
+        if (loss) frame.gaps.push({ trackId: track.id, startMs: before.sample.sourceMs, endMs: null, reason: loss });
+        if (before.visit) frame.visits.push({ ...before.visit, state: 'partial', reason: loss ?? 'rule-changed' });
+      }
+      if (loss) continue;
+      const available = { ...track, zones };
+      retained.set(track, available);
+      if (!count) nextTracks.push(available);
+    }
+
     for (const [index, detection] of detections.entries()) {
       const matches = candidates[index]!;
-      const match = matches.length === 1 ? matches[0] : undefined;
-      const previous = match && candidateCounts.get(match) === 1 ? match : undefined;
-      const continuous = previous && previous.sourceMs === this.lastAnalyzedMs
-        && sourceMs - previous.sourceMs <= confirmationGapMs;
-      const zones: Track['zones'] = new Map();
-      for (const { rule, version } of versions) {
+      const previous = matches.length === 1 ? retained.get(matches[0]!) : undefined;
+      const trackId = previous?.id ?? this.nextTrackId++;
+      const zones = previous?.zones ?? new Map<string, ZoneState>();
+      for (const rule of rules) {
         if (detection.confidence < rule.minimumConfidence || !rule.objectTypes.includes(detection.objectType)) continue;
+        const sample = { sourceMs, detection, points: rule.points };
+        const subject = subjectFor(rule, detection.objectType);
+        const frame = frameFor(subject);
         const inside = overlapsZone(detection.box, rule.points);
-        zones.set(rule.id, { inside, version });
-        const before = previous?.zones.get(rule.id);
-        if (continuous && before?.version === version && before.inside !== inside) {
+        const before = zones.get(rule.id);
+        const continuous = before && before.sample.sourceMs === this.lastAnalyzedMs
+          && sourceMs - before.sample.sourceMs <= confirmationGapMs;
+        if (before && !continuous) {
+          frame.gaps.push({ trackId, startMs: before.sample.sourceMs, endMs: sourceMs, reason: 'recovered' });
+        }
+        if (before && before.inside !== inside) {
           const direction = inside ? 'entry' : 'exit';
-          if (rule.eventType === 'both' || rule.eventType === direction) crossings.push({ rule, detection, direction });
+          frame.crossings.push({
+            trackId, certainty: continuous ? 'confirmed' : 'possible',
+            direction, before: before.sample, after: sample,
+          });
+          if (continuous && (rule.eventType === 'both' || rule.eventType === direction)) {
+            crossings.push({ rule, detection, direction });
+          }
+        }
+
+        let visit: Visit | undefined;
+        if (inside) {
+          frame.inside?.push({ ...sample, trackId });
+          visit = before?.visit ? { ...before.visit, lastInside: sample } : {
+            trackId, firstInside: sample, lastInside: sample, entry: before && continuous ? sample : null,
+            exit: null, state: 'open', reason: null,
+          };
+          frame.visits.push(visit);
+        } else if (before?.visit) {
+          const exit = continuous ? sample : null;
+          frame.visits.push({
+            ...before.visit, exit, state: before.visit.entry && exit ? 'complete' : 'partial',
+            reason: exit ? null : 'possible-exit',
+          });
+        }
+        zones.set(rule.id, { subject, version: versions.get(rule.id)!, inside, sample, visit });
+      }
+      nextTracks.push({ id: trackId, detection, sourceMs, zones });
+    }
+    for (const track of nextTracks) {
+      for (const [ruleId, state] of track.zones) {
+        if (state.sample.sourceMs === sourceMs) continue;
+        const frame = frameFor(state.subject);
+        frame.unknownTrackIds.push(track.id);
+        if (!state.missing) {
+          frame.gaps.push({ trackId: track.id, startMs: state.sample.sourceMs, endMs: null, reason: 'missing' });
+          track.zones.set(ruleId, { ...state, missing: true });
         }
       }
-      this.tracks.push({ detection, sourceMs, zones });
     }
+    this.tracks = nextTracks;
     this.lastAnalyzedMs = sourceMs;
-    return crossings;
+    return { crossings, evidence: { rules: [...frames.values()] } };
   }
 }

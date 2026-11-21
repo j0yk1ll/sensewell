@@ -19,6 +19,7 @@ interface Replay extends ReplayView {
   abort: AbortController;
   ready: Promise<void>;
   task: Promise<void>;
+  passId?: string;
 }
 
 type ReplayCamera = SyntheticCamera & { startOffsetMs: number };
@@ -35,6 +36,10 @@ export class ReplayService implements OnModuleDestroy {
     return this.active.get(cameraId)?.status ?? this.completed.get(cameraId)?.status ?? { state: 'idle' };
   }
 
+  isPassActive(cameraId: string, passId: string) {
+    return this.active.get(cameraId)?.passId === passId;
+  }
+
   async start(tenantId: string, camera: ReplayCamera, loop: boolean) {
     const existing = this.active.get(camera.id);
     if (existing) return this.startedStatus(existing);
@@ -44,7 +49,8 @@ export class ReplayService implements OnModuleDestroy {
     const replay: Replay = {
       abort: new AbortController(),
       status: { state: 'starting' },
-      ready: this.database.cameras.recordPass(tenantId, { cameraId: camera.id, id: runId, runId }),
+      ready: this.database.cameras.recordPass(tenantId, { cameraId: camera.id, id: runId, runId, passNumber: 1 }),
+      passId: runId,
       task: Promise.resolve(),
     };
     this.active.set(camera.id, replay);
@@ -120,7 +126,10 @@ export class ReplayService implements OnModuleDestroy {
         const passId = currentPass === 1 ? runId : randomUUID();
         let analyzedFrames = 0;
         const zoneEntries = new ZoneEntryEvaluator();
-        if (currentPass > 1) await this.database.cameras.recordPass(tenantId, { cameraId: camera.id, id: passId, runId });
+        if (currentPass > 1) {
+          await this.database.cameras.recordPass(tenantId, { cameraId: camera.id, id: passId, runId, passNumber: currentPass });
+          replay.passId = passId;
+        }
         signal.throwIfAborted();
 
         for await (const frame of replayFrames(this.clips.path(camera.id), {
@@ -141,6 +150,8 @@ export class ReplayService implements OnModuleDestroy {
             replay.status = { state: 'running', passId, passNumber: currentPass, sourceMs: frame.sourceMs };
           }, () => undefined);
         }
+        await pendingAnalysis;
+        replay.passId = undefined;
       } while (loop && !signal.aborted);
       await lastDisplay;
       if (!signal.aborted) result = { state: 'finished' };
@@ -174,16 +185,27 @@ export class ReplayService implements OnModuleDestroy {
   ) {
     const occurredAt = new Date();
     const result = await detectObjects(jpeg, signal);
+    if (result.state !== 'analyzed') zoneEntries.interrupt();
     if (result.state === 'analyzed' && !signal.aborted) {
       const { detections } = result;
+      const restore = zoneEntries.checkpoint();
       try {
-        await this.database.observations.recordForReplay(
+        const saved = await this.database.observations.recordForReplay(
           tenantId, { cameraId, passId, passNumber, sourceMs, detections, occurredAt, jpeg },
-          (rules) => zoneEntries.observe(sourceMs, detections, rules)
-            .map(({ rule, detection, direction }) => ({ rule, direction, detectionIndex: detections.indexOf(detection) })),
+          (rules) => {
+            const { crossings, evidence } = zoneEntries.evaluate(sourceMs, detections, rules);
+            return {
+              evidence,
+              crossings: crossings.map(({ rule, detection, direction }) => ({
+                rule, direction, detectionIndex: detections.indexOf(detection),
+              })),
+            };
+          },
         );
+        if (!saved) restore();
       } catch {
-        zoneEntries.reset();
+        restore();
+        zoneEntries.interrupt();
         this.logger.warn(`Could not record an observation for replay pass ${passId}`);
         return { state: 'unavailable' } as const;
       }

@@ -45,3 +45,27 @@ Measured on November 20, 2026 in Chrome on the local Intel Core i7-13620H demo w
 Processing throughput for the complete first pass was **3.31 analyzed frames/s**. Sensewell persisted 199 analyzed frames in 60.112 seconds of elapsed replay time. Replay itself ran at 1× and sampled the clip at up to 10 frames/s.
 
 The check also fetched the original pass's evidence after the loop advanced to pass 2. Requests from a separate signed-in tenant returned HTTP 404 for history, evidence, and the source clip.
+
+## Inspect uncertainty in Zone activity
+
+Choose a replay pass below **Event history**. The panel reports confirmed observed entries, estimated distinct entrant tracks, and observed occupancy for each enabled rule and object class. An entry-only rule still uses observed exits to establish dwell. Select a source time in seconds to inspect the nearest analyzed observation at or before that time, within 400 ms and within the analyzed range. The panel shows the actual observation time and tracks whose positions are unknown at that observation. Missing or filtered detections can make observed occupancy lower than actual occupancy.
+
+Open **Crossing evidence**, **Observation gaps**, or **Visits and dwell** to inspect the source times and qualifying confidence scores. Select an observation to see its detection and saved zone overlaid on the source frame, with the replay pass and source time shown together. Possible crossings have an interval between the last qualifying observations on opposite sides. Only confirmed crossings qualify for operational events and entry counts. When a person is first observed inside, occupancy includes that observation and the visit has an unknown entry. Dwell is calculated only when a visit has a confirmed entry and exit. Ambiguous associations, expired tracks, and the end of a replay pass close open visits as partial. Each pass starts with fresh tracks, so the jump back to the start cannot create an entry or exit.
+
+### Camera_0004 verification
+
+In one 1× RF-DETR replay of the documented zone at 35% rule confidence, the pass had qualifying observations on opposite sides at **0:14.200** (54%, outside) and **0:15.400** (36%, inside). Three intervening detections at **0:14.500**, **0:14.800**, and **0:15.100** had confidences of 32%, 27%, and 32%. Their consecutive box intersection-over-union scores were 0.80, 0.70, and 0.42, and the final match at **0:15.400** scored 0.66. The 500 ms recovery window applies between matching detections, including those below the rule threshold. This let the tracker preserve the track while the rule showed a 1.2 s gap and a possible entry. The first inside observation had positive box overlap with the zone.
+
+The same pass showed confirmed entries at **0:54.200** and **0:54.800** on one track, for two observed entries and one estimated distinct entrant. Both entry boxes overlapped the zone by a small positive area. The associated dwell measurements were **0.300 s** and **5.100 s**. The panel linked each interval or endpoint to the original clip. Sample selection at 1× depends on detector latency, so timestamps and counts can vary between runs.
+
+### Controlled observations
+
+| Observations | Expected evidence |
+| --- | --- |
+| Move a box from edge-only contact to positive overlap on consecutive qualifying observations. | One confirmed entry. Edge-only contact is outside. |
+| Follow a qualifying outside box with a missing or below-threshold observation, then recover the same track inside. | A possible entry and a visible gap. The inside observation contributes to occupancy with entry unknown. |
+| Reobserve a box uniquely on the same side exactly 500 ms after the last match. | The track is retained and the qualifying observation gap is visible. |
+| Reobserve after 501 ms or offer two plausible matches for one track. | Fresh tracks and a partial visit for any open visit on the discarded track. |
+| End a pass with a track inside and start the loop with a box on the opposite side. | The earlier visit is partial. The first observation after the loop creates no crossing. |
+
+In the controlled Chrome replay, pass 1 recorded entries at **0:00.100** and **0:00.300** for one entrant track. It showed a possible entry between **0:00.400** and **0:00.600**. The final open visit became partial when the loop finished, and pass 2 produced no entry or exit at **0:00.000** when the clip restarted on the opposite side.

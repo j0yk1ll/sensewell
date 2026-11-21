@@ -15,6 +15,7 @@
     "db:migrate": "node dist/migrate.js"
   },
   "dependencies": {
+    "@sensewell/contracts": "workspace:*",
     "drizzle-orm": "^0.45.0",
     "pg": "^8.17.0"
   },

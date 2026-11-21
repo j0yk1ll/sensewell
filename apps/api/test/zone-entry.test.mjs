@@ -4,7 +4,7 @@ import { detectorFrameAnalysis, zoneEntryRuleInput } from '@sensewell/contracts'
 import { ZoneEntryEvaluator } from '../dist/zone-entry.js';
 
 const rule = {
-  id: 'rack-side', revision: 1, minimumConfidence: 0.5, eventType: 'both', objectTypes: ['person'],
+  id: 'rack-side', name: 'Rack-side entry', zoneName: 'Rack-side floor', revision: 1, minimumConfidence: 0.5, eventType: 'both', objectTypes: ['person'],
   points: [{ x: 0.5, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0.5, y: 1 }],
 };
 const person = (x, confidence = 0.8) => ({ box: [x - 0.1, 0.2, x + 0.1, 0.6], confidence, objectType: 'person' });
@@ -140,5 +140,30 @@ test('legacy detector results are person detections and rules reject invalid obj
   const input = { zoneId: '9e3cb3cb-1e70-4b5d-84f0-4f4ad5aeb4fd', name: 'Traffic', minimumConfidence: 0.5 };
   for (const objectTypes of [[], ['unknown'], ['forklift', 'forklift']]) {
     assert.equal(zoneEntryRuleInput.safeParse({ ...input, objectTypes }).success, false);
+  }
+});
+
+test('exposes a possible crossing with both observations and an unknown visit entry', () => {
+  for (const interruption of [[], [person(0.39, 0.49)]]) {
+    const pass = new ZoneEntryEvaluator();
+    const outside = person(0.39);
+    const inside = person(0.43);
+    pass.evaluate(0, [outside], [rule]);
+    const unknown = pass.evaluate(100, interruption, [rule]).evidence.rules[0];
+    assert.equal(unknown.inside.length, 0);
+    assert.deepEqual(unknown.unknownTrackIds, [1]);
+    assert.deepEqual(unknown.gaps, [{ trackId: 1, startMs: 0, endMs: null, reason: 'missing' }]);
+    const { crossings, evidence } = pass.evaluate(200, [inside], [rule]);
+    assert.deepEqual(crossings, []);
+    const [crossing] = evidence.rules[0].crossings;
+    assert.equal(crossing.certainty, 'possible');
+    assert.equal(crossing.direction, 'entry');
+    assert.deepEqual(crossing.before, { sourceMs: 0, detection: outside, points: rule.points });
+    assert.deepEqual(crossing.after, { sourceMs: 200, detection: inside, points: rule.points });
+    assert.deepEqual(evidence.rules[0].gaps.map(({ startMs, endMs }) => [startMs, endMs]), [[0, 200]]);
+    const [visit] = evidence.rules[0].visits;
+    assert.equal(visit.entry, null);
+    assert.equal(visit.trackId, crossing.trackId);
+    assert.equal(evidence.rules[0].inside[0].trackId, crossing.trackId);
   }
 });

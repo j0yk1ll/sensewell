@@ -85,6 +85,13 @@
       "when": 1795253265056,
       "tag": "0011_zone_rule_objects",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795255740454,
+      "tag": "0012_replay_zone_activity",
+      "breakpoints": true
     }
   ]
 }
