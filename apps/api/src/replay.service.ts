@@ -4,7 +4,7 @@ import { Injectable, Logger, ServiceUnavailableException, type OnModuleDestroy }
 import type { ReplayFrameAnalysis, ReplayImage, ReplayStatus, SyntheticCamera } from '@sensewell/contracts';
 import { ClipStorage } from './clip-storage.js';
 import { DatabaseService } from './database.service.js';
-import { detectPeople, replayDisplayDelayMs } from './replay-detector.js';
+import { detectObjects, replayDisplayDelayMs } from './replay-detector.js';
 import { jpegPart, replayFrameIntervalMs, replayFrames, type ReplayFrame } from './replay-source.js';
 import { ZoneEntryEvaluator } from './zone-entry.js';
 
@@ -173,14 +173,14 @@ export class ReplayService implements OnModuleDestroy {
     signal: AbortSignal,
   ) {
     const occurredAt = new Date();
-    const result = await detectPeople(jpeg, signal);
+    const result = await detectObjects(jpeg, signal);
     if (result.state === 'analyzed' && !signal.aborted) {
-      const { people } = result;
+      const { detections } = result;
       try {
         await this.database.observations.recordForReplay(
-          tenantId, { cameraId, passId, passNumber, sourceMs, people, occurredAt, jpeg },
-          (rules) => zoneEntries.observe(sourceMs, people, rules)
-            .map(({ rule, person, direction }) => ({ rule, direction, personIndex: people.indexOf(person) })),
+          tenantId, { cameraId, passId, passNumber, sourceMs, detections, occurredAt, jpeg },
+          (rules) => zoneEntries.observe(sourceMs, detections, rules)
+            .map(({ rule, detection, direction }) => ({ rule, direction, detectionIndex: detections.indexOf(detection) })),
         );
       } catch {
         zoneEntries.reset();

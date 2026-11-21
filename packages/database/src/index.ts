@@ -9,7 +9,7 @@ export { normalizeCameraEndpoint, streamEndpoint } from './camera-endpoint.js';
 export { cameraRecordings, cameras, cameraZones, operationalEvents, replayObservations, replayPasses, replayZoneEntries, zoneEntryRules } from './schema.js';
 
 type TenantTransaction = Parameters<Parameters<ReturnType<typeof drizzle>['transaction']>[0]>[0];
-type RuleInput = Pick<typeof zoneEntryRules.$inferInsert, 'name' | 'zoneId' | 'minimumConfidence' | 'eventType'>;
+type RuleInput = Pick<typeof zoneEntryRules.$inferInsert, 'name' | 'zoneId' | 'minimumConfidence' | 'eventType' | 'objectTypes'>;
 type Observation = Omit<typeof replayObservations.$inferInsert, 'tenantId' | 'eventJpeg'>;
 type ActiveRule = Required<RuleInput> & { id: string; revision: number; zoneName: string; points: ZoneInput['points'] };
 type ZoneInput = Pick<typeof cameraZones.$inferInsert, 'name' | 'points'>;
@@ -66,6 +66,7 @@ export function createDatabase({ max }: { max?: number } = {}) {
     zoneId: zoneEntryRules.zoneId,
     minimumConfidence: zoneEntryRules.minimumConfidence,
     eventType: zoneEntryRules.eventType,
+    objectTypes: zoneEntryRules.objectTypes,
     enabled: zoneEntryRules.enabled,
   };
   const ruleScope = (tenantId: string, cameraId: string) =>
@@ -74,6 +75,7 @@ export function createDatabase({ max }: { max?: number } = {}) {
   const historyFields = {
     id: replayZoneEntries.eventId,
     direction: replayZoneEntries.direction,
+    objectType: replayZoneEntries.objectType,
     cameraName: cameras.name,
     zoneName: sql<string>`${replayZoneEntries.zone}->>'name'`,
     ruleName: replayZoneEntries.ruleName,
@@ -217,7 +219,10 @@ export function createDatabase({ max }: { max?: number } = {}) {
         const [row] = await forTenant(tenantId, (tx) => tx.select({
           ...historyFields,
           zone: replayZoneEntries.zone,
-          person: sql<Observation['people'][number]>`${replayObservations.people}->${replayZoneEntries.personIndex}`,
+          detection: sql<Observation['detections'][number]>`
+            jsonb_build_object('objectType', ${replayZoneEntries.objectType})
+            || (${replayObservations.detections}->${replayZoneEntries.detectionIndex})
+          `,
           jpeg: replayObservations.eventJpeg,
         }).from(replayZoneEntries).innerJoin(operationalEvents, entryEvent).innerJoin(cameras, entryCamera)
           .innerJoin(replayObservations, entryObservation)
@@ -229,9 +234,9 @@ export function createDatabase({ max }: { max?: number } = {}) {
       recordForReplay(
         tenantId: string,
         frame: Observation & { passNumber: number; occurredAt: Date; jpeg: Buffer },
-        evaluate: (rules: ActiveRule[]) => { rule: ActiveRule; personIndex: number; direction: (typeof replayZoneEntries.$inferSelect)['direction'] }[],
+        evaluate: (rules: ActiveRule[]) => { rule: ActiveRule; detectionIndex: number; direction: (typeof replayZoneEntries.$inferSelect)['direction'] }[],
       ) {
-        const { cameraId, passId, passNumber, sourceMs, people, occurredAt, jpeg } = frame;
+        const { cameraId, passId, passNumber, sourceMs, detections, occurredAt, jpeg } = frame;
         return forTenant(tenantId, async (tx) => {
           const rules = await tx.select({
             id: zoneEntryRules.id,
@@ -239,6 +244,7 @@ export function createDatabase({ max }: { max?: number } = {}) {
             name: zoneEntryRules.name,
             minimumConfidence: zoneEntryRules.minimumConfidence,
             eventType: zoneEntryRules.eventType,
+            objectTypes: zoneEntryRules.objectTypes,
             revision: zoneEntryRules.revision,
             zoneName: cameraZones.name,
             points: cameraZones.points,
@@ -251,14 +257,15 @@ export function createDatabase({ max }: { max?: number } = {}) {
 
           const crossings = evaluate(rules);
           const [saved] = await tx.insert(replayObservations).values({
-            tenantId, cameraId, passId, sourceMs, people,
+            tenantId, cameraId, passId, sourceMs, detections,
             eventJpeg: crossings.length ? jpeg.toString('base64') : null,
           }).onConflictDoNothing().returning({ sourceMs: replayObservations.sourceMs });
           if (!saved || !crossings.length) return;
 
-          const evidence = crossings.map(({ rule, personIndex, direction }) => ({
+          const evidence = crossings.map(({ rule, detectionIndex, direction }) => ({
             eventId: randomUUID(), tenantId, cameraId, passId, passNumber, sourceMs,
-            ruleId: rule.id, ruleName: rule.name, personIndex, direction,
+            ruleId: rule.id, ruleName: rule.name, detectionIndex, direction,
+            objectType: detections[detectionIndex]?.objectType ?? 'person',
             zone: { id: rule.zoneId, name: rule.zoneName, points: rule.points },
           }));
           await tx.insert(operationalEvents).values(evidence.map(({ eventId }) => ({ id: eventId, tenantId, occurredAt })));
@@ -270,7 +277,7 @@ export function createDatabase({ max }: { max?: number } = {}) {
       }) {
         return forTenant(tenantId, (tx) => tx.select({
           cameraId: replayObservations.cameraId, passId: replayObservations.passId,
-          sourceMs: replayObservations.sourceMs, people: replayObservations.people,
+          sourceMs: replayObservations.sourceMs, detections: replayObservations.detections,
         }).from(replayObservations).where(and(
           eq(replayObservations.tenantId, tenantId), eq(replayObservations.cameraId, cameraId),
           eq(replayObservations.passId, passId),

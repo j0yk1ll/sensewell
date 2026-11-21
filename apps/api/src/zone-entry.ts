@@ -1,15 +1,16 @@
-import type { PersonDetection, ZoneCrossingDirection, ZonePoint, ZoneRuleEventType } from '@sensewell/contracts';
+import type { ObjectDetection, ZoneCrossingDirection, ZonePoint, ZoneRuleEventType } from '@sensewell/contracts';
 
 interface EntryRule {
   id: string;
   revision: number;
   minimumConfidence: number;
   eventType: ZoneRuleEventType;
+  objectTypes: string[];
   points: ZonePoint[];
 }
 
 interface Track {
-  person: PersonDetection;
+  detection: ObjectDetection;
   sourceMs: number;
   zones: Map<string, { inside: boolean; version: string }>;
 }
@@ -18,7 +19,7 @@ const recoveryMs = 500;
 const confirmationGapMs = 400;
 const minimumTrackOverlap = 0.3;
 
-function boxOverlap(a: PersonDetection['box'], b: PersonDetection['box']) {
+function boxOverlap(a: ObjectDetection['box'], b: ObjectDetection['box']) {
   const width = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0]));
   const height = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
   const intersection = width * height;
@@ -45,7 +46,7 @@ function clipAtBound(points: ZonePoint[], axis: keyof ZonePoint, bound: number, 
   return clipped;
 }
 
-function overlapsZone([left, top, right, bottom]: PersonDetection['box'], points: ZonePoint[]) {
+function overlapsZone([left, top, right, bottom]: ObjectDetection['box'], points: ZonePoint[]) {
   // Clip the zone polygon against all four sides of the detection box.
   let overlap = clipAtBound(points, 'x', left, 1);
   overlap = clipAtBound(overlap, 'x', right, -1);
@@ -71,20 +72,21 @@ export class ZoneEntryEvaluator {
     this.lastAnalyzedMs = undefined;
   }
 
-  observe<Rule extends EntryRule>(sourceMs: number, people: PersonDetection[], rules: Rule[]) {
+  observe<Rule extends EntryRule>(sourceMs: number, detections: ObjectDetection[], rules: Rule[]) {
     const tracks = this.tracks.filter((track) => sourceMs - track.sourceMs <= recoveryMs);
-    const candidates = people.map(({ box }) =>
-      tracks.filter((track) => boxOverlap(track.person.box, box) >= minimumTrackOverlap));
+    const candidates = detections.map(({ box, objectType }) =>
+      tracks.filter((track) => track.detection.objectType === objectType
+        && boxOverlap(track.detection.box, box) >= minimumTrackOverlap));
     const candidateCounts = new Map<Track, number>();
     for (const matches of candidates) {
       for (const track of matches) candidateCounts.set(track, (candidateCounts.get(track) ?? 0) + 1);
     }
 
-    const crossings: { rule: Rule; person: PersonDetection; direction: ZoneCrossingDirection }[] = [];
+    const crossings: { rule: Rule; detection: ObjectDetection; direction: ZoneCrossingDirection }[] = [];
     const versions = rules.map((rule) => ({ rule, version: JSON.stringify([rule.revision, rule.points]) }));
     // Keep unmatched tracks briefly. Discard ambiguous associations instead of guessing.
     this.tracks = tracks.filter((track) => !candidateCounts.has(track));
-    for (const [index, person] of people.entries()) {
+    for (const [index, detection] of detections.entries()) {
       const matches = candidates[index]!;
       const match = matches.length === 1 ? matches[0] : undefined;
       const previous = match && candidateCounts.get(match) === 1 ? match : undefined;
@@ -92,16 +94,16 @@ export class ZoneEntryEvaluator {
         && sourceMs - previous.sourceMs <= confirmationGapMs;
       const zones: Track['zones'] = new Map();
       for (const { rule, version } of versions) {
-        if (person.confidence < rule.minimumConfidence) continue;
-        const inside = overlapsZone(person.box, rule.points);
+        if (detection.confidence < rule.minimumConfidence || !rule.objectTypes.includes(detection.objectType)) continue;
+        const inside = overlapsZone(detection.box, rule.points);
         zones.set(rule.id, { inside, version });
         const before = previous?.zones.get(rule.id);
         if (continuous && before?.version === version && before.inside !== inside) {
           const direction = inside ? 'entry' : 'exit';
-          if (rule.eventType === 'both' || rule.eventType === direction) crossings.push({ rule, person, direction });
+          if (rule.eventType === 'both' || rule.eventType === direction) crossings.push({ rule, detection, direction });
         }
       }
-      this.tracks.push({ person, sourceMs, zones });
+      this.tracks.push({ detection, sourceMs, zones });
     }
     this.lastAnalyzedMs = sourceMs;
     return crossings;

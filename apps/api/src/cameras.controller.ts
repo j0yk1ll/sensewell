@@ -42,7 +42,7 @@ function parseZone(body: unknown) {
 
 function parseRule(body: unknown) {
   const input = zoneEntryRuleInput.safeParse(body);
-  if (!input.success) throw new BadRequestException('Choose a saved zone, a rule name, and a minimum confidence from 0 to 100%.');
+  if (!input.success) throw new BadRequestException('Choose a saved zone, a rule name, at least one supported object type, and a minimum confidence from 0 to 100%.');
   return input.data;
 }
 

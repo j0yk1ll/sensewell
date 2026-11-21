@@ -135,7 +135,7 @@ export const replayObservations = pgTable('replay_observations', {
   passId: uuid('pass_id').notNull(),
   sourceMs: integer('source_ms').notNull(),
   eventJpeg: text('event_jpeg'),
-  people: jsonb().$type<{ box: [number, number, number, number]; confidence: number }[]>().notNull(),
+  detections: jsonb('people').$type<{ box: [number, number, number, number]; confidence: number; objectType?: string }[]>().notNull(),
 }, (frame) => [
   tenantIsolation(frame.tenantId),
   primaryKey({ columns: [frame.tenantId, frame.cameraId, frame.passId, frame.sourceMs] }),
@@ -192,6 +192,7 @@ export const zoneEntryRules = pgTable('zone_entry_rules', {
   name: text().notNull(),
   minimumConfidence: doublePrecision('minimum_confidence').notNull(),
   eventType: text('event_type', { enum: ['entry', 'exit', 'both'] }).default('both').notNull(),
+  objectTypes: text('object_types').array().default(sql`ARRAY['person']::text[]`).notNull(),
   enabled: boolean().default(false).notNull(),
   revision: integer().default(0).notNull(),
 }, (rule) => [
@@ -202,6 +203,7 @@ export const zoneEntryRules = pgTable('zone_entry_rules', {
     foreignColumns: [cameraZones.tenantId, cameraZones.cameraId, cameraZones.id],
   }).onDelete('cascade'),
   index().on(rule.tenantId, rule.cameraId, rule.zoneId),
+  check('zone_entry_rule_objects', sql`cardinality(${rule.objectTypes}) > 0`),
   check('zone_entry_rule_event_type', sql`${rule.eventType} in ('entry', 'exit', 'both')`),
   check('zone_entry_rule_confidence', sql`${rule.minimumConfidence} between 0 and 1`),
 ]).enableRLS();
@@ -217,7 +219,8 @@ export const replayZoneEntries = pgTable('replay_zone_entries', {
   ruleName: text('rule_name').notNull(),
   direction: text({ enum: ['entry', 'exit'] }).default('entry').notNull(),
   zone: jsonb().$type<{ id: string; name: string; points: (typeof cameraZones.$inferSelect)['points'] }>().notNull(),
-  personIndex: integer('person_index').notNull(),
+  detectionIndex: integer('person_index').notNull(),
+  objectType: text('object_type').default('person').notNull(),
 }, (entry) => [
   tenantIsolation(entry.tenantId),
   check('replay_zone_entry_direction', sql`${entry.direction} in ('entry', 'exit')`),

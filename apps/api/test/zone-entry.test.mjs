@@ -1,18 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { detectorFrameAnalysis, zoneEntryRuleInput } from '@sensewell/contracts';
 import { ZoneEntryEvaluator } from '../dist/zone-entry.js';
 
 const rule = {
-  id: 'rack-side', revision: 1, minimumConfidence: 0.5, eventType: 'both',
+  id: 'rack-side', revision: 1, minimumConfidence: 0.5, eventType: 'both', objectTypes: ['person'],
   points: [{ x: 0.5, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0.5, y: 1 }],
 };
-const person = (x, confidence = 0.8) => ({ box: [x - 0.1, 0.2, x + 0.1, 0.6], confidence });
+const person = (x, confidence = 0.8) => ({ box: [x - 0.1, 0.2, x + 0.1, 0.6], confidence, objectType: 'person' });
 
 test('records an outside-to-inside crossing with its qualifying detection', () => {
   const pass = new ZoneEntryEvaluator();
   assert.deepEqual(pass.observe(0, [person(0.39)], [rule]), []);
   const inside = person(0.43, 0.5);
-  assert.deepEqual(pass.observe(100, [inside], [rule]), [{ rule, person: inside, direction: 'entry' }]);
+  assert.deepEqual(pass.observe(100, [inside], [rule]), [{ rule, detection: inside, direction: 'entry' }]);
   assert.deepEqual(pass.observe(200, [inside], [rule]), []);
 });
 
@@ -24,8 +25,8 @@ test('a filtered or missing observation cannot establish an outside position', (
     assert.deepEqual(pass.observe(0, [inside], [rule]), []);
     assert.deepEqual(pass.observe(100, interruption, [rule]), []);
     assert.deepEqual(pass.observe(200, [inside], [rule]), []);
-    assert.deepEqual(pass.observe(300, [outside], [rule]), [{ rule, person: outside, direction: 'exit' }]);
-    assert.deepEqual(pass.observe(400, [inside], [rule]), [{ rule, person: inside, direction: 'entry' }]);
+    assert.deepEqual(pass.observe(300, [outside], [rule]), [{ rule, detection: outside, direction: 'exit' }]);
+    assert.deepEqual(pass.observe(400, [inside], [rule]), [{ rule, detection: inside, direction: 'entry' }]);
   }
 });
 
@@ -60,7 +61,7 @@ test('brief sampling skips keep a credible track while a longer gap starts fresh
   const pass = new ZoneEntryEvaluator();
   const inside = person(0.43);
   pass.observe(0, [person(0.39)], [rule]);
-  assert.deepEqual(pass.observe(400, [inside], [rule]), [{ rule, person: inside, direction: 'entry' }]);
+  assert.deepEqual(pass.observe(400, [inside], [rule]), [{ rule, detection: inside, direction: 'entry' }]);
   pass.observe(500, [person(0.39)], [rule]);
   assert.deepEqual(pass.observe(1000, [inside], [rule]), []);
   pass.observe(1100, [person(0.39)], [rule]);
@@ -73,7 +74,7 @@ test('records a separate exit when the same person leaves the zone', () => {
   const inside = person(0.43);
   pass.observe(0, [outside], [rule]);
   pass.observe(100, [inside], [rule]);
-  assert.deepEqual(pass.observe(200, [outside], [rule]), [{ rule, person: outside, direction: 'exit' }]);
+  assert.deepEqual(pass.observe(200, [outside], [rule]), [{ rule, detection: outside, direction: 'exit' }]);
   assert.deepEqual(pass.observe(300, [outside], [rule]), []);
 });
 
@@ -99,8 +100,45 @@ test('uses positive box overlap even when the person’s feet are outside the zo
     { x: 0.5, y: 0.1 }, { x: 0.9, y: 0.1 }, { x: 0.9, y: 0.35 }, { x: 0.5, y: 0.35 },
   ] };
   const overlaps = person(0.45);
-  const touches = { box: [0.3, 0.2, 0.5, 0.6], confidence: 0.8 };
+  const touches = { box: [0.3, 0.2, 0.5, 0.6], confidence: 0.8, objectType: 'person' };
   assert.deepEqual(pass.observe(0, [touches], [upperZone]), []);
-  assert.deepEqual(pass.observe(100, [overlaps], [upperZone]), [{ rule: upperZone, person: overlaps, direction: 'entry' }]);
-  assert.deepEqual(pass.observe(200, [touches], [upperZone]), [{ rule: upperZone, person: touches, direction: 'exit' }]);
+  assert.deepEqual(pass.observe(100, [overlaps], [upperZone]), [{ rule: upperZone, detection: overlaps, direction: 'entry' }]);
+  assert.deepEqual(pass.observe(200, [touches], [upperZone]), [{ rule: upperZone, detection: touches, direction: 'exit' }]);
+});
+
+test('rules select object classes and tracks cannot switch classes', () => {
+  const pass = new ZoneEntryEvaluator();
+  const vehicleRule = { ...rule, objectTypes: ['forklift', 'pallet_jack'] };
+  const outside = person(0.39);
+  const insideForklift = { ...person(0.43), objectType: 'forklift' };
+  assert.deepEqual(pass.observe(0, [outside], [vehicleRule]), []);
+  assert.deepEqual(pass.observe(100, [insideForklift], [vehicleRule]), []);
+
+  const outsideForklift = { ...outside, objectType: 'forklift' };
+  const outsideJack = { ...outside, objectType: 'pallet_jack' };
+  const insideJack = { ...insideForklift, objectType: 'pallet_jack' };
+  pass.observe(200, [outsideForklift, outsideJack, outside], [vehicleRule]);
+  assert.deepEqual(pass.observe(300, [insideForklift, insideJack, person(0.43)], [vehicleRule]), [
+    { rule: vehicleRule, detection: insideForklift, direction: 'entry' },
+    { rule: vehicleRule, detection: insideJack, direction: 'entry' },
+  ]);
+});
+
+test('an enabled multi-class rule does not join a person and forklift into one track', () => {
+  const pass = new ZoneEntryEvaluator();
+  const multiClassRule = { ...rule, objectTypes: ['person', 'forklift'] };
+  assert.deepEqual(pass.observe(0, [person(0.39)], [multiClassRule]), []);
+  const forklift = { ...person(0.43), objectType: 'forklift' };
+  assert.deepEqual(pass.observe(100, [forklift], [multiClassRule]), []);
+});
+
+test('legacy detector results are person detections and rules reject invalid object selections', () => {
+  const { box, confidence } = person(0.39);
+  assert.deepEqual(detectorFrameAnalysis.parse({ state: 'analyzed', people: [{ box, confidence }] }), {
+    state: 'analyzed', detections: [{ box, confidence, objectType: 'person' }],
+  });
+  const input = { zoneId: '9e3cb3cb-1e70-4b5d-84f0-4f4ad5aeb4fd', name: 'Traffic', minimumConfidence: 0.5 };
+  for (const objectTypes of [[], ['unknown'], ['forklift', 'forklift']]) {
+    assert.equal(zoneEntryRuleInput.safeParse({ ...input, objectTypes }).success, false);
+  }
 });

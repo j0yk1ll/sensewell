@@ -53,9 +53,8 @@ class Detector:
         if set(ids_by_name) != set(CLASS_NAMES):
             raise ValueError("RF-DETR metadata does not match the warehouse classes")
         self.class_ids = [ids_by_name[name] for name in CLASS_NAMES]
-        self.person_index = CLASS_NAMES.index("person")
 
-    def people(self, jpeg):
+    def detect(self, jpeg):
         with Image.open(io.BytesIO(jpeg), formats=["JPEG"]) as source:
             image = source.convert("RGB").resize((self.width, self.height), Image.Resampling.BILINEAR)
         pixels = (np.asarray(image, dtype=np.float32) * self.pixel_scale - self.mean) / self.std
@@ -64,16 +63,23 @@ class Detector:
 
         # Select each query's strongest foreground class and ignore the background slot.
         scores = 1 / (1 + np.exp(-np.clip(logits[0][:, self.class_ids], -80, 80)))
-        confidence = scores[:, self.person_index]
-        people = (scores.argmax(axis=1) == self.person_index) & (confidence >= MIN_CONFIDENCE)
+        classes = scores.argmax(axis=1)
+        confidence = scores[np.arange(len(classes)), classes]
+        qualifying = confidence >= MIN_CONFIDENCE
 
         detections = []
-        for (cx, cy, width, height), score in zip(boxes[0][people], confidence[people]):
+        for (cx, cy, width, height), score, class_index in zip(
+            boxes[0][qualifying], confidence[qualifying], classes[qualifying],
+        ):
             left, top, right, bottom = np.clip(
                 [cx - width / 2, cy - height / 2, cx + width / 2, cy + height / 2], 0, 1,
             )
             if right > left and bottom > top:
-                detections.append(dict(box=[float(x) for x in (left, top, right, bottom)], confidence=float(score)))
+                detections.append({
+                    "objectType": CLASS_NAMES[class_index],
+                    "box": [float(x) for x in (left, top, right, bottom)],
+                    "confidence": float(score),
+                })
         return detections
 
 
@@ -109,7 +115,7 @@ class InferenceHandler(StreamRequestHandler):
         if not self.server.slot.acquire(blocking=False):
             return {"state": "skipped"}
         try:
-            return {"state": "analyzed", "people": self.server.detector.people(jpeg)}
+            return {"state": "analyzed", "detections": self.server.detector.detect(jpeg)}
         except Exception:
             logging.exception("Warehouse frame analysis failed")
             return {"state": "unavailable"}

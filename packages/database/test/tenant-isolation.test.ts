@@ -195,6 +195,7 @@ test('confirmed replay events retain private evidence from their original pass',
   assert.ok(rule);
   assert.equal(rule.enabled, false);
   assert.equal(rule.eventType, 'both');
+  assert.deepEqual(rule.objectTypes, ['person']);
   assert.deepEqual(await database.zoneEntryRules.list(otherTenant, cameraId), []);
   assert.deepEqual(await database.forTenant(otherTenant, (tx) => tx.select().from(zoneEntryRules)), []);
   assert.equal(await database.zoneEntryRules.setEnabled(otherTenant, cameraId, rule.id, true), undefined);
@@ -206,22 +207,22 @@ test('confirmed replay events retain private evidence from their original pass',
   await database.cameras.recordPass(tenant, { cameraId, id: otherPassId, runId });
   const person = { box: [0.2, 0.3, 0.4, 0.5] as [number, number, number, number], confidence: 0.85 };
   const jpeg = Buffer.from('sample frame bytes');
-  const frame = { cameraId, passId, passNumber: 1, sourceMs: 200, people: [person], occurredAt: new Date(), jpeg };
+  const frame = { cameraId, passId, passNumber: 1, sourceMs: 200, detections: [person], occurredAt: new Date(), jpeg };
   await database.observations.recordForReplay(tenant, { ...frame, sourceMs: 100 }, (rules) => {
     assert.deepEqual(rules, []);
     return [];
   });
   assert.equal((await database.zoneEntryRules.setEnabled(tenant, cameraId, rule.id, true))?.enabled, true);
-  await database.observations.recordForReplay(tenant, frame, (rules) => rules.map((rule) => ({ rule, personIndex: 0, direction: 'entry' })));
-  await database.observations.recordForReplay(tenant, { ...frame, passId: otherPassId, passNumber: 2, people: [] }, () => []);
-  await database.observations.recordForReplay(tenant, frame, (rules) => rules.map((rule) => ({ rule, personIndex: 0, direction: 'entry' })));
+  await database.observations.recordForReplay(tenant, frame, (rules) => rules.map((rule) => ({ rule, detectionIndex: 0, direction: 'entry' })));
+  await database.observations.recordForReplay(tenant, { ...frame, passId: otherPassId, passNumber: 2, detections: [] }, () => []);
+  await database.observations.recordForReplay(tenant, frame, (rules) => rules.map((rule) => ({ rule, detectionIndex: 0, direction: 'entry' })));
 
   const history = await database.zoneEntries.history(tenant, cameraId);
   assert.equal(history.length, 1);
   const [event] = history;
   assert.ok(event);
   assert.deepEqual(event, {
-    id: event.id, direction: 'entry', cameraName: camera.name, zoneName: zone.name, ruleName: rule.name,
+    id: event.id, direction: 'entry', objectType: 'person', cameraName: camera.name, zoneName: zone.name, ruleName: rule.name,
     occurredAt: frame.occurredAt, passId, passNumber: 1, sourceMs: 200,
   });
   assert.deepEqual(await database.zoneEntries.history(otherTenant, cameraId), []);
@@ -230,35 +231,38 @@ test('confirmed replay events retain private evidence from their original pass',
   assert.equal(await database.zoneEntries.evidence(tenant, siblingId, event.id), undefined);
 
   const otherZone = await database.zones.add(tenant, cameraId, { name: 'New rack', points: zone.points });
-  const update = { zoneId: otherZone.id, name: 'Renamed rule', minimumConfidence: 0.35, eventType: 'exit' as const };
+  const update = { zoneId: otherZone.id, name: 'Renamed rule', minimumConfidence: 0.35, eventType: 'exit' as const, objectTypes: ['forklift', 'pallet_jack'] };
   assert.equal(await database.zoneEntryRules.update(otherTenant, cameraId, rule.id, update), undefined);
   assert.equal(await database.zoneEntryRules.update(tenant, siblingId, rule.id, update), undefined);
   assert.deepEqual(await database.zoneEntryRules.update(tenant, cameraId, rule.id, update), {
     ...update, id: rule.id, enabled: true,
   });
-  const exitFrame = { ...frame, sourceMs: 300, occurredAt: new Date(frame.occurredAt.getTime() + 100) };
+  const forklift = { ...person, objectType: 'forklift' };
+  const exitFrame = { ...frame, detections: [forklift], sourceMs: 300, occurredAt: new Date(frame.occurredAt.getTime() + 100) };
   await database.observations.recordForReplay(tenant, exitFrame, (rules) =>
     rules.map((rule) => {
       assert.equal(rule.eventType, 'exit');
-      return { rule, personIndex: 0, direction: 'exit' };
+      assert.deepEqual(rule.objectTypes, ['forklift', 'pallet_jack']);
+      return { rule, detectionIndex: 0, direction: 'exit' };
     }));
   const [exit, entry] = await database.zoneEntries.history(tenant, cameraId);
   assert.ok(exit);
   assert.equal(exit.direction, 'exit');
+  assert.equal(exit.objectType, 'forklift');
   assert.equal(exit.sourceMs, 300);
   assert.equal(exit.ruleName, update.name);
   assert.deepEqual(entry, event);
 
   const loopFrame = { ...frame, passId: otherPassId, passNumber: 2, occurredAt: new Date(frame.occurredAt.getTime() + 200) };
   await database.observations.recordForReplay(tenant, { ...loopFrame, sourceMs: 400 }, (rules) =>
-    rules.map((rule) => ({ rule, personIndex: 0, direction: 'entry' })));
+    rules.map((rule) => ({ rule, detectionIndex: 0, direction: 'entry' })));
   assert.deepEqual((await database.zoneEntries.history(tenant, cameraId)).map(({ passNumber }) => passNumber), [2, 1, 1]);
 
   const freshPassId = randomUUID();
   await database.cameras.recordPass(tenant, { cameraId, id: freshPassId, runId: randomUUID() });
   assert.deepEqual(await database.zoneEntries.history(tenant, cameraId), []);
   await database.observations.recordForReplay(tenant, { ...frame, passId: freshPassId }, (rules) =>
-    rules.map((rule) => ({ rule, personIndex: 0, direction: 'entry' })));
+    rules.map((rule) => ({ rule, detectionIndex: 0, direction: 'entry' })));
   assert.deepEqual((await database.zoneEntries.history(tenant, cameraId)).map(({ passId }) => passId), [freshPassId]);
 
   assert.equal(await database.zoneEntryRules.remove(otherTenant, cameraId, rule.id), false);
@@ -268,9 +272,9 @@ test('confirmed replay events retain private evidence from their original pass',
   assert.deepEqual(await database.zoneEntryRules.list(tenant, cameraId), []);
   assert.equal(await database.zones.remove(tenant, cameraId, zone.id), true);
   assert.deepEqual(await database.zoneEntries.evidence(tenant, cameraId, exit.id), {
-    ...exit, zone: otherZone, person, jpeg: jpeg.toString('base64'),
+    ...exit, zone: otherZone, detection: forklift, jpeg: jpeg.toString('base64'),
   });
   assert.deepEqual(await database.zoneEntries.evidence(tenant, cameraId, event.id), {
-    ...event, zone, person, jpeg: jpeg.toString('base64'),
+    ...event, zone, detection: { ...person, objectType: 'person' }, jpeg: jpeg.toString('base64'),
   });
 });

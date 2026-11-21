@@ -1,21 +1,26 @@
 import { z } from 'zod';
 import { cameraZone, cameraZoneInput } from './camera-zone.js';
-import { personDetection } from './replay-analysis.js';
+import { objectDetection, warehouseObjectType } from './replay-analysis.js';
 
 export const zoneRuleEventType = z.enum(['entry', 'exit', 'both']);
 export type ZoneRuleEventType = z.infer<typeof zoneRuleEventType>;
 
+const ruleObjectTypes = z.array(warehouseObjectType).min(1).max(warehouseObjectType.options.length)
+  .refine((types) => new Set(types).size === types.length);
+
 export const zoneEntryRuleInput = z.strictObject({
   zoneId: z.uuid(),
   eventType: zoneRuleEventType.optional(),
+  objectTypes: ruleObjectTypes.optional(),
   name: cameraZoneInput.shape.name,
-  minimumConfidence: personDetection.shape.confidence,
+  minimumConfidence: objectDetection.shape.confidence,
 });
 export type ZoneEntryRuleInput = z.infer<typeof zoneEntryRuleInput>;
 
 export const zoneEntryRuleToggle = z.strictObject({ enabled: z.boolean() });
 export const zoneEntryRule = zoneEntryRuleInput.extend({
   eventType: zoneRuleEventType,
+  objectTypes: ruleObjectTypes,
   id: z.uuid(),
   enabled: z.boolean(),
 });
@@ -27,6 +32,7 @@ export type ZoneCrossingDirection = z.infer<typeof zoneCrossingDirection>;
 
 const zoneEntryEvent = z.object({
   direction: zoneCrossingDirection.default('entry'),
+  objectType: warehouseObjectType,
   id: z.uuid(),
   cameraName: z.string(),
   zoneName: z.string(),
@@ -42,6 +48,6 @@ export type ZoneEntryEvent = z.infer<typeof zoneEntryEvent>;
 export const zoneEntryEvidence = zoneEntryEvent.extend({
   zone: cameraZone,
   window: z.object({ startMs: z.number().int().nonnegative(), endMs: z.number().int().positive() }),
-  person: personDetection,
+  detection: objectDetection,
   jpeg: z.string().max(1_398_104),
 });

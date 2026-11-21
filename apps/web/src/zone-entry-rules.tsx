@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { maxZoneNameLength, zoneRuleEventType, type CameraZone, type ZoneEntryRule, type ZoneEntryRuleInput } from '@sensewell/contracts';
+import { maxZoneNameLength, warehouseObjectLabels, warehouseObjectType, zoneRuleEventType, type CameraZone, type ZoneEntryRule, type ZoneEntryRuleInput, type WarehouseObjectType } from '@sensewell/contracts';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -46,7 +46,7 @@ export function ZoneEntryRules({ id, tenantId }: { id: string; tenantId: string 
 
   return (
     <Card className="gap-4 px-5 sm:px-6">
-      <h3 className="text-lg font-semibold" tabIndex={-1} ref={heading}>Person zone rules</h3>
+      <h3 className="text-lg font-semibold" tabIndex={-1} ref={heading}>Zone rules</h3>
       {zones.isPending && <p role="status">Loading zones…</p>}
       {zones.isError && <p className="error" role="alert">{zones.error.message}</p>}
       {zones.data?.length === 0 && <p className="text-sm text-slate-600">Save a zone to create a rule.</p>}
@@ -66,7 +66,7 @@ export function ZoneEntryRules({ id, tenantId }: { id: string; tenantId: string 
             <div className="min-w-0 wrap-anywhere">
               <p className="font-medium">{rule.name}</p>
               <p className="text-sm text-slate-600">
-                {zones.data?.find((zone) => zone.id === rule.zoneId)?.name ?? 'Saved zone'} · {eventTypeLabels[rule.eventType]} · {Math.round(rule.minimumConfidence * 100)}% minimum · {rule.enabled ? 'Enabled' : 'Disabled'}
+                {zones.data?.find((zone) => zone.id === rule.zoneId)?.name ?? 'Saved zone'} · {eventTypeLabels[rule.eventType]} · {rule.objectTypes.map((type) => warehouseObjectLabels[type]).join(', ')} · {Math.round(rule.minimumConfidence * 100)}% minimum · {rule.enabled ? 'Enabled' : 'Disabled'}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -122,6 +122,7 @@ function RuleForm({ id, zones, rule, onSaved, onCancel }: {
   const [zoneId, setZoneId] = useState(rule?.zoneId ?? '');
   const [name, setName] = useState(rule?.name ?? '');
   const [eventType, setEventType] = useState<ZoneEntryRule['eventType']>(rule?.eventType ?? 'both');
+  const [objectTypes, setObjectTypes] = useState<WarehouseObjectType[]>(rule?.objectTypes ?? ['person']);
   const [confidence, setConfidence] = useState(rule ? String(rule.minimumConfidence * 100) : '50');
   const selectedZone = zones.find((zone) => zone.id === zoneId) ?? zones[0];
   const save = useMutation({
@@ -138,7 +139,7 @@ function RuleForm({ id, zones, rule, onSaved, onCancel }: {
   return selectedZone && (
     <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => {
       event.preventDefault();
-      save.mutate({ zoneId: selectedZone.id, name, eventType, minimumConfidence: Number(confidence) / 100 });
+      save.mutate({ zoneId: selectedZone.id, name, eventType, objectTypes, minimumConfidence: Number(confidence) / 100 });
     }}>
       <div className="field min-w-36 flex-1">
         <Label htmlFor={`${prefix}-zone`}>Saved zone</Label>
@@ -164,7 +165,22 @@ function RuleForm({ id, zones, rule, onSaved, onCancel }: {
         <Input id={`${prefix}-confidence`} type="number" min={0} max={100} step="any" value={confidence} required
           onChange={(event) => setConfidence(event.target.value)} />
       </div>
-      <Button type="submit" disabled={save.isPending}>{rule ? 'Save changes' : 'Create rule'}</Button>
+      <details className="w-full rounded-md border border-input px-3 py-2 text-sm">
+        <summary className="cursor-pointer font-medium focus-visible:outline-2 focus-visible:outline-ring">
+          Object types · {objectTypes.length ? objectTypes.map((type) => warehouseObjectLabels[type]).join(', ') : 'Choose at least one'}
+        </summary>
+        <fieldset aria-label="Object types" className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {warehouseObjectType.options.map((type) => <label key={type} className="flex items-center gap-2">
+            <input type="checkbox" className="size-4 accent-primary" checked={objectTypes.includes(type)}
+              onChange={(event) => {
+                const checked = event.currentTarget.checked;
+                setObjectTypes((current) => checked ? [...current, type] : current.filter((selected) => selected !== type));
+              }} />
+            {warehouseObjectLabels[type]}
+          </label>)}
+        </fieldset>
+      </details>
+      <Button type="submit" disabled={save.isPending || !objectTypes.length}>{rule ? 'Save changes' : 'Create rule'}</Button>
       {rule && <Button type="button" variant="outline" disabled={save.isPending} onClick={onCancel}>Cancel edit</Button>}
       {save.isError && <p className="error w-full" role="alert">{save.error.message}</p>}
     </form>

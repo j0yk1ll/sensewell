@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { ZoneEntryEvent } from '@sensewell/contracts';
+import { warehouseObjectLabels, type ZoneEntryEvent } from '@sensewell/contracts';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -40,7 +40,7 @@ export function ZoneEntryHistory({ id, tenantId, replayActive }: {
           <li key={event.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
             <div className="min-w-0 wrap-anywhere">
               <p className="font-medium">{event.ruleName}</p>
-              <p className="text-sm text-slate-600">{event.cameraName} · {event.zoneName} · Confirmed zone {event.direction}</p>
+              <p className="text-sm text-slate-600">{event.cameraName} · {event.zoneName} · {warehouseObjectLabels[event.objectType]} · Confirmed zone {event.direction}</p>
               <p className="text-sm tabular-nums text-slate-600">
                 <time dateTime={event.occurredAt}>{new Date(event.occurredAt).toLocaleString()}</time>
                 {' · '}<span title={event.passId}>{replayPosition(event)}</span>
@@ -71,7 +71,7 @@ function CrossingEvidence({ id, tenantId, eventId, onClose }: {
   });
   useEffect(() => heading.current?.focus(), []);
   const event = evidence.data;
-  const confidence = event && `Person ${Math.round(event.person.confidence * 100)}% confidence`;
+  const confidence = event && `${warehouseObjectLabels[event.objectType]} ${Math.round(event.detection.confidence * 100)}% confidence`;
 
   return (
     <section className="grid gap-3 rounded-md border bg-slate-50 p-3 sm:p-4" aria-label="Zone crossing evidence">
@@ -94,20 +94,20 @@ function CrossingEvidence({ id, tenantId, eventId, onClose }: {
                 })} />
               {sourceSize && <>
                 <ZoneOverlay footage={image} sourceSize={sourceSize} zones={[event.zone]} />
-                <DetectionBox box={event.person.box} />
+                <DetectionBox box={event.detection.box} />
               </>}
             </div>
             <figcaption className="mt-1 text-sm text-slate-700">Analyzed crossing frame · {confidence}</figcaption>
           </figure>
-          <EvidenceClip id={id} tenantId={tenantId} eventId={eventId} sourceMs={event.sourceMs} window={event.window} />
+          <EvidenceClip id={id} tenantId={tenantId} eventId={eventId} window={event.window} />
         </div>
       </>}
     </section>
   );
 }
 
-function EvidenceClip({ id, tenantId, eventId, sourceMs, window }: {
-  id: string; tenantId: string; eventId: string; sourceMs: number; window: { startMs: number; endMs: number };
+function EvidenceClip({ id, tenantId, eventId, window }: {
+  id: string; tenantId: string; eventId: string; window: { startMs: number; endMs: number };
 }) {
   const clip = useQuery({
     queryKey: ['event-evidence-clip', tenantId, id, eventId],
@@ -129,9 +129,6 @@ function EvidenceClip({ id, tenantId, eventId, sourceMs, window }: {
     <div className="min-w-0">
       <div className="footage">
         {url && <video aria-label="Timestamped evidence clip" src={url} preload="metadata" controls playsInline
-          onLoadedMetadata={({ currentTarget }) => {
-            currentTarget.currentTime = Math.min(currentTarget.duration, (sourceMs - window.startMs) / 1000);
-          }}
           onError={() => setVideoError(true)} />}
         {!url && !clip.isError && <p className="footage-message" role="status">Preparing evidence clip…</p>}
         {(clip.isError || videoError) && <p className="footage-message" role="alert">Evidence clip unavailable.</p>}

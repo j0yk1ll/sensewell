@@ -64,7 +64,7 @@ export const cameraEndpointSettings = z.object({
   endpoints: z.array(z.string()),
 });
 
-export { replayFrameAnalysis, replayImage } from './replay-analysis.js';
-export type { PersonDetection, ReplayFrameAnalysis, ReplayImage } from './replay-analysis.js';
+export { detectorFrameAnalysis, replayFrameAnalysis, replayImage, warehouseObjectLabels, warehouseObjectType } from './replay-analysis.js';
+export type { ObjectDetection, ReplayFrameAnalysis, ReplayImage, WarehouseObjectType } from './replay-analysis.js';
 export { zoneEntryEvidence, zoneEntryHistory, zoneEntryRule, zoneEntryRuleInput, zoneEntryRuleList, zoneEntryRuleToggle, zoneRuleEventType } from './zone-entry.js';
 export type { ZoneCrossingDirection, ZoneEntryEvent, ZoneEntryRule, ZoneEntryRuleInput, ZoneRuleEventType } from './zone-entry.js';

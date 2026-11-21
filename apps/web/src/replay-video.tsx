@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { ReplayImage } from '@sensewell/contracts';
+import { warehouseObjectLabels, type ReplayImage } from '@sensewell/contracts';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -25,7 +25,7 @@ function paintFrame(source: HTMLCanvasElement, overlay: HTMLCanvasElement, bitma
 
   annotations.font = `bold ${Math.max(14, width / 48)}px system-ui`;
   annotations.lineJoin = 'round';
-  for (const { box: [left, top, right, bottom], confidence } of frame.analysis.people) {
+  for (const { box: [left, top, right, bottom], confidence, objectType } of frame.analysis.detections) {
     const x = left * width;
     const y = top * height;
     const boxWidth = (right - left) * width;
@@ -37,7 +37,7 @@ function paintFrame(source: HTMLCanvasElement, overlay: HTMLCanvasElement, bitma
     annotations.strokeStyle = '#fcd34d';
     annotations.strokeRect(x, y, boxWidth, boxHeight);
 
-    const label = `Person ${Math.round(confidence * 100)}%`;
+    const label = `${warehouseObjectLabels[objectType]} ${Math.round(confidence * 100)}%`;
     const labelX = Math.max(2, Math.min(x + 2, width - annotations.measureText(label).width - 3));
     const labelY = Math.max(22, y - 5);
     annotations.lineWidth = 4;
@@ -92,10 +92,10 @@ export function ReplayVideo({ id, tenantId, stopping, children }: {
   }, [id, attempt, stopping]);
 
   const showingFootage = !stopping && !unavailable && Boolean(frame);
-  const people = frame?.analysis.state === 'analyzed' ? frame.analysis.people : [];
-  const confidenceLabel = people.map(({ confidence }) => `Person ${Math.round(confidence * 100)}% confidence`).join(', ');
+  const detections = frame?.analysis.state === 'analyzed' ? frame.analysis.detections : [];
+  const confidenceLabel = detections.map(({ confidence, objectType }) => `${warehouseObjectLabels[objectType]} ${Math.round(confidence * 100)}% confidence`).join(', ');
   const analysisStatus = {
-    analyzed: people.length === 0 ? 'No people detected on this frame' : 'Person detections available',
+    analyzed: detections.length === 0 ? 'No objects detected on this frame' : 'Object detections available',
     delayed: 'Analysis delayed for this frame',
     skipped: 'Frame skipped while the detector was busy',
     unavailable: 'Analysis unavailable for this frame',
@@ -107,7 +107,7 @@ export function ReplayVideo({ id, tenantId, stopping, children }: {
         <canvas ref={source} className="replay-image" width={1} height={1} role="img" aria-label="Replay source footage"
           hidden={!showingFootage} />
         <canvas ref={overlay} className="replay-image pointer-events-none" width={1} height={1}
-          role="img" aria-label={confidenceLabel} hidden={!showingFootage || !showDetections || !people.length} />
+          role="img" aria-label={confidenceLabel} hidden={!showingFootage || !showDetections || !detections.length} />
         {showingFootage && sourceSize && !!zones.data?.length &&
           <ZoneOverlay footage={footage} sourceSize={sourceSize} zones={zones.data} />}
         {!frame && !stopping && !unavailable && <p className="footage-message" role="status">Loading replay footage…</p>}
@@ -129,7 +129,7 @@ export function ReplayVideo({ id, tenantId, stopping, children }: {
             <div className="flex items-center gap-2">
               <Checkbox id={detectionsId} checked={showDetections}
                 onCheckedChange={(checked) => setShowDetections(checked === true)} />
-              <Label htmlFor={detectionsId}>Show person detections</Label>
+              <Label htmlFor={detectionsId}>Show object detections</Label>
             </div>
             <p>{showingFootage && frame ? analysisStatus[frame.analysis.state] : 'Waiting for replay analysis…'}</p>
           </div>

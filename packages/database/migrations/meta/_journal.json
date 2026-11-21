@@ -78,6 +78,13 @@
       "when": 1795251062417,
       "tag": "0010_replay_history_runs",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795253265056,
+      "tag": "0011_zone_rule_objects",
+      "breakpoints": true
     }
   ]
 }

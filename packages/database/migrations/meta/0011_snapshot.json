@@ -1,0 +1,1360 @@
+{
+  "id": "e147017d-8567-49ca-856c-3ba4adb57023",
+  "prevId": "284d593a-75d4-44bc-ac3c-a1d6e014ee9e",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.account": {
+      "name": "account",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "accountId": {
+          "name": "accountId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "providerId": {
+          "name": "providerId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "userId": {
+          "name": "userId",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "accessToken": {
+          "name": "accessToken",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "refreshToken": {
+          "name": "refreshToken",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "idToken": {
+          "name": "idToken",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accessTokenExpiresAt": {
+          "name": "accessTokenExpiresAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "refreshTokenExpiresAt": {
+          "name": "refreshTokenExpiresAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "password": {
+          "name": "password",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "account_userId_index": {
+          "name": "account_userId_index",
+          "columns": [
+            {
+              "expression": "userId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "account_userId_user_id_fk": {
+          "name": "account_userId_user_id_fk",
+          "tableFrom": "account",
+          "tableTo": "user",
+          "columnsFrom": [
+            "userId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.session": {
+      "name": "session",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "expiresAt": {
+          "name": "expiresAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token": {
+          "name": "token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ipAddress": {
+          "name": "ipAddress",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "userAgent": {
+          "name": "userAgent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "userId": {
+          "name": "userId",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "session_userId_index": {
+          "name": "session_userId_index",
+          "columns": [
+            {
+              "expression": "userId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "session_userId_user_id_fk": {
+          "name": "session_userId_user_id_fk",
+          "tableFrom": "session",
+          "tableTo": "user",
+          "columnsFrom": [
+            "userId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "session_token_unique": {
+          "name": "session_token_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "token"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.user": {
+      "name": "user",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "emailVerified": {
+          "name": "emailVerified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "image": {
+          "name": "image",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "user_email_unique": {
+          "name": "user_email_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "email"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.verification": {
+      "name": "verification",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "identifier": {
+          "name": "identifier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expiresAt": {
+          "name": "expiresAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "verification_identifier_index": {
+          "name": "verification_identifier_index",
+          "columns": [
+            {
+              "expression": "identifier",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.camera_endpoint_administrators": {
+      "name": "camera_endpoint_administrators",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "camera_endpoint_administrators_user_id_user_id_fk": {
+          "name": "camera_endpoint_administrators_user_id_user_id_fk",
+          "tableFrom": "camera_endpoint_administrators",
+          "tableTo": "user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.camera_endpoint_import": {
+      "name": "camera_endpoint_import",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "camera_endpoint_import_singleton": {
+          "name": "camera_endpoint_import_singleton",
+          "value": "\"camera_endpoint_import\".\"id\" = 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.camera_endpoints": {
+      "name": "camera_endpoints",
+      "schema": "",
+      "columns": {
+        "endpoint": {
+          "name": "endpoint",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "camera_endpoint_read": {
+          "name": "camera_endpoint_read",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "sensewell_app"
+          ],
+          "using": "true"
+        },
+        "camera_endpoint_add": {
+          "name": "camera_endpoint_add",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": [
+            "sensewell_app"
+          ],
+          "withCheck": "exists (\n  select from \"camera_endpoint_administrators\"\n  where user_id = nullif(current_setting('sensewell.tenant_id', true), '')::uuid\n)"
+        },
+        "camera_endpoint_remove": {
+          "name": "camera_endpoint_remove",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": [
+            "sensewell_app"
+          ],
+          "using": "exists (\n  select from \"camera_endpoint_administrators\"\n  where user_id = nullif(current_setting('sensewell.tenant_id', true), '')::uuid\n)"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.camera_recordings": {
+      "name": "camera_recordings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "camera_id": {
+          "name": "camera_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "camera_recordings_tenant_id_camera_id_started_at_index": {
+          "name": "camera_recordings_tenant_id_camera_id_started_at_index",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "camera_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "started_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "camera_recordings_camera_fk": {
+          "name": "camera_recordings_camera_fk",
+          "tableFrom": "camera_recordings",
+          "tableTo": "cameras",
+          "columnsFrom": [
+            "tenant_id",
+            "camera_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "sensewell_app"
+          ],
+          "using": "\"camera_recordings\".\"tenant_id\" = nullif(current_setting('sensewell.tenant_id', true), '')::uuid",
+          "withCheck": "\"camera_recordings\".\"tenant_id\" = nullif(current_setting('sensewell.tenant_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.camera_zones": {
+      "name": "camera_zones",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "camera_id": {
+          "name": "camera_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "points": {
+          "name": "points",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "camera_zones_camera_fk": {
+          "name": "camera_zones_camera_fk",
+          "tableFrom": "camera_zones",
+          "tableTo": "cameras",
+          "columnsFrom": [
+            "tenant_id",
+            "camera_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "camera_zones_tenant_id_camera_id_id_unique": {
+          "name": "camera_zones_tenant_id_camera_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "camera_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "sensewell_app"
+          ],
+          "using": "\"camera_zones\".\"tenant_id\" = nullif(current_setting('sensewell.tenant_id', true), '')::uuid",
+          "withCheck": "\"camera_zones\".\"tenant_id\" = nullif(current_setting('sensewell.tenant_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.cameras": {
+      "name": "cameras",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "duration_ms": {
+          "name": "duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "start_offset_ms": {
+          "name": "start_offset_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "encrypted_stream": {
+          "name": "encrypted_stream",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "removed_at": {
+          "name": "removed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "synthetic_cameras_tenant_id_id_unique": {
+          "name": "synthetic_cameras_tenant_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "sensewell_app"
+          ],
+          "using": "\"cameras\".\"tenant_id\" = nullif(current_setting('sensewell.tenant_id', true), '')::uuid",
+          "withCheck": "\"cameras\".\"tenant_id\" = nullif(current_setting('sensewell.tenant_id', true), '')::uuid"
+        },
+        "ip_camera_removal": {
+          "name": "ip_camera_removal",
+          "as": "RESTRICTIVE",
+          "for": "UPDATE",
+          "to": [
+            "sensewell_app"
+          ],
+          "using": "\"cameras\".\"encrypted_stream\" is not null",
+          "withCheck": "\"cameras\".\"removed_at\" is not null and \"cameras\".\"encrypted_stream\" is null"
+        }
+      },
+      "checkConstraints": {
+        "camera_source": {
+          "name": "camera_source",
+          "value": "\n    (\"cameras\".\"encrypted_stream\" is null and \"cameras\".\"removed_at\" is null\n      and \"cameras\".\"duration_ms\" is not null and \"cameras\".\"start_offset_ms\" is not null)\n    or ((\"cameras\".\"encrypted_stream\" is not null) <> (\"cameras\".\"removed_at\" is not null)\n      and \"cameras\".\"duration_ms\" is null and \"cameras\".\"start_offset_ms\" is null)\n  "
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.operational_events": {
+      "name": "operational_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "operational_events_tenant_id_id_unique": {
+          "name": "operational_events_tenant_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "sensewell_app"
+          ],
+          "using": "\"operational_events\".\"tenant_id\" = nullif(current_setting('sensewell.tenant_id', true), '')::uuid",
+          "withCheck": "\"operational_events\".\"tenant_id\" = nullif(current_setting('sensewell.tenant_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.replay_observations": {
+      "name": "replay_observations",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "camera_id": {
+          "name": "camera_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pass_id": {
+          "name": "pass_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_ms": {
+          "name": "source_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_jpeg": {
+          "name": "event_jpeg",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "people": {
+          "name": "people",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "replay_observations_pass_fk": {
+          "name": "replay_observations_pass_fk",
+          "tableFrom": "replay_observations",
+          "tableTo": "replay_passes",
+          "columnsFrom": [
+            "tenant_id",
+            "camera_id",
+            "pass_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "camera_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "replay_observations_tenant_id_camera_id_pass_id_source_ms_pk": {
+          "name": "replay_observations_tenant_id_camera_id_pass_id_source_ms_pk",
+          "columns": [
+            "tenant_id",
+            "camera_id",
+            "pass_id",
+            "source_ms"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "sensewell_app"
+          ],
+          "using": "\"replay_observations\".\"tenant_id\" = nullif(current_setting('sensewell.tenant_id', true), '')::uuid",
+          "withCheck": "\"replay_observations\".\"tenant_id\" = nullif(current_setting('sensewell.tenant_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "replay_observation_source_ms": {
+          "name": "replay_observation_source_ms",
+          "value": "\"replay_observations\".\"source_ms\" >= 0"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.replay_passes": {
+      "name": "replay_passes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "camera_id": {
+          "name": "camera_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "replay_passes_tenant_id_camera_id_started_at_id_index": {
+          "name": "replay_passes_tenant_id_camera_id_started_at_id_index",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "camera_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "started_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "replay_passes_tenant_id_camera_id_run_id_index": {
+          "name": "replay_passes_tenant_id_camera_id_run_id_index",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "camera_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "replay_passes_tenant_id_camera_id_synthetic_cameras_tenant_id_id_fk": {
+          "name": "replay_passes_tenant_id_camera_id_synthetic_cameras_tenant_id_id_fk",
+          "tableFrom": "replay_passes",
+          "tableTo": "cameras",
+          "columnsFrom": [
+            "tenant_id",
+            "camera_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "replay_passes_tenant_id_camera_id_id_unique": {
+          "name": "replay_passes_tenant_id_camera_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "camera_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "sensewell_app"
+          ],
+          "using": "\"replay_passes\".\"tenant_id\" = nullif(current_setting('sensewell.tenant_id', true), '')::uuid",
+          "withCheck": "\"replay_passes\".\"tenant_id\" = nullif(current_setting('sensewell.tenant_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.replay_zone_entries": {
+      "name": "replay_zone_entries",
+      "schema": "",
+      "columns": {
+        "event_id": {
+          "name": "event_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "camera_id": {
+          "name": "camera_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pass_id": {
+          "name": "pass_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pass_number": {
+          "name": "pass_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_ms": {
+          "name": "source_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rule_id": {
+          "name": "rule_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rule_name": {
+          "name": "rule_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "direction": {
+          "name": "direction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'entry'"
+        },
+        "zone": {
+          "name": "zone",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "person_index": {
+          "name": "person_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_type": {
+          "name": "object_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'person'"
+        }
+      },
+      "indexes": {
+        "replay_zone_entries_tenant_id_camera_id_index": {
+          "name": "replay_zone_entries_tenant_id_camera_id_index",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "camera_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "replay_zone_entries_event_fk": {
+          "name": "replay_zone_entries_event_fk",
+          "tableFrom": "replay_zone_entries",
+          "tableTo": "operational_events",
+          "columnsFrom": [
+            "tenant_id",
+            "event_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "replay_zone_entries_observation_fk": {
+          "name": "replay_zone_entries_observation_fk",
+          "tableFrom": "replay_zone_entries",
+          "tableTo": "replay_observations",
+          "columnsFrom": [
+            "tenant_id",
+            "camera_id",
+            "pass_id",
+            "source_ms"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "camera_id",
+            "pass_id",
+            "source_ms"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "sensewell_app"
+          ],
+          "using": "\"replay_zone_entries\".\"tenant_id\" = nullif(current_setting('sensewell.tenant_id', true), '')::uuid",
+          "withCheck": "\"replay_zone_entries\".\"tenant_id\" = nullif(current_setting('sensewell.tenant_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "replay_zone_entry_direction": {
+          "name": "replay_zone_entry_direction",
+          "value": "\"replay_zone_entries\".\"direction\" in ('entry', 'exit')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.zone_entry_rules": {
+      "name": "zone_entry_rules",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "camera_id": {
+          "name": "camera_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "zone_id": {
+          "name": "zone_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "minimum_confidence": {
+          "name": "minimum_confidence",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'both'"
+        },
+        "object_types": {
+          "name": "object_types",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "ARRAY['person']::text[]"
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "zone_entry_rules_tenant_id_camera_id_zone_id_index": {
+          "name": "zone_entry_rules_tenant_id_camera_id_zone_id_index",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "camera_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "zone_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "zone_entry_rules_zone_fk": {
+          "name": "zone_entry_rules_zone_fk",
+          "tableFrom": "zone_entry_rules",
+          "tableTo": "camera_zones",
+          "columnsFrom": [
+            "tenant_id",
+            "camera_id",
+            "zone_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "camera_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "sensewell_app"
+          ],
+          "using": "\"zone_entry_rules\".\"tenant_id\" = nullif(current_setting('sensewell.tenant_id', true), '')::uuid",
+          "withCheck": "\"zone_entry_rules\".\"tenant_id\" = nullif(current_setting('sensewell.tenant_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "zone_entry_rule_objects": {
+          "name": "zone_entry_rule_objects",
+          "value": "cardinality(\"zone_entry_rules\".\"object_types\") > 0"
+        },
+        "zone_entry_rule_event_type": {
+          "name": "zone_entry_rule_event_type",
+          "value": "\"zone_entry_rules\".\"event_type\" in ('entry', 'exit', 'both')"
+        },
+        "zone_entry_rule_confidence": {
+          "name": "zone_entry_rule_confidence",
+          "value": "\"zone_entry_rules\".\"minimum_confidence\" between 0 and 1"
+        }
+      },
+      "isRLSEnabled": true
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

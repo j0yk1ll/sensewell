@@ -1,10 +1,10 @@
 import { createConnection } from 'node:net';
-import { replayFrameAnalysis, type ReplayFrameAnalysis } from '@sensewell/contracts';
+import { detectorFrameAnalysis, type ReplayFrameAnalysis } from '@sensewell/contracts';
 
 const detectorUrl = process.env.REPLAY_DETECTOR_URL;
 export const replayDisplayDelayMs = 650;
 
-export async function detectPeople(jpeg: Buffer, signal: AbortSignal): Promise<ReplayFrameAnalysis> {
+export async function detectObjects(jpeg: Buffer, signal: AbortSignal): Promise<ReplayFrameAnalysis> {
   if (!detectorUrl) return { state: 'unavailable' };
   const timeout = AbortSignal.timeout(replayDisplayDelayMs - 50);
   try {
@@ -23,7 +23,7 @@ export async function detectPeople(jpeg: Buffer, signal: AbortSignal): Promise<R
       if (bytes > 64 * 1024) throw new Error('Detector response is too large.');
       chunks.push(chunk);
     }
-    return replayFrameAnalysis.parse(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+    return detectorFrameAnalysis.parse(JSON.parse(Buffer.concat(chunks).toString('utf8')));
   } catch {
     return { state: timeout.aborted ? 'delayed' : 'unavailable' };
   }
