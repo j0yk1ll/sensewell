@@ -51,6 +51,7 @@ export async function* replayFrames(
   pass: Pick<ReplayFrame, 'cameraId' | 'passId'>,
   { startOffsetMs, durationMs }: { startOffsetMs: number; durationMs: number },
   signal: AbortSignal,
+  sharedStart?: number,
 ): AsyncGenerator<ReplayFrame> {
   const decoder = spawn('ffmpeg', [
     '-nostdin', '-v', 'error', '-xerror', '-threads', '2', '-filter_threads', '1',
@@ -68,7 +69,7 @@ export async function* replayFrames(
     decoder.once('close', (code) => resolve(code === 0));
   });
   let sourceMs = startOffsetMs;
-  let startedAt: number | undefined;
+  let startedAt = sharedStart;
 
   try {
     for await (const jpeg of jpegFrames(decoder.stdout)) {
@@ -81,7 +82,9 @@ export async function* replayFrames(
       sourceMs += replayFrameIntervalMs;
     }
 
-    if (!(await exited) || startedAt === undefined) throw new Error('No playable replay frames');
+    if (!(await exited) || sourceMs === startOffsetMs || startedAt === undefined) {
+      throw new Error('No playable replay frames');
+    }
     const remaining = startedAt + durationMs - performance.now();
     if (remaining > 0) await setTimeout(remaining, undefined, { signal });
   } finally {

@@ -28,6 +28,8 @@ Compose starts PostgreSQL and the detector service, applies the Drizzle migratio
 
 See the [Warehouse replay walkthrough](docs/warehouse-zone-entry.md) for the annotated crossing and timing results.
 
+The [three-camera Blender demo](docs/warehouse-demo.md) includes synchronized fixture generation, scoring references, and replay with repeatable delay and outage profiles.
+
 FFmpeg decodes up to 10 replay frames per second at 1× source speed. Each pass has a persistent ID tied to the source camera. The CPU detector records supported Warehouse object detections at or above 25% confidence, using normalized box coordinates and source timestamps. An analyzed frame with zero detections is recorded as an empty observation. Replay uses a 650 ms display buffer and reports missing or delayed analysis per frame so playback can continue when inference falls behind. Active playback runs in the app process and stops when that process exits.
 
 The Compose secret and origins are for local use. Set `BETTER_AUTH_SECRET` to a random secret (at least 32 characters) and `BETTER_AUTH_URL` to the browser-facing HTTPS URL for a deployment.

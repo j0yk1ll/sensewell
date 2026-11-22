@@ -5,3 +5,5 @@ dist/
 .env.*
 .sensewell-clips/
 .sensewell-recordings/
+/warehouse-fixtures/
+/scripts/warehouse-demo/__pycache__/

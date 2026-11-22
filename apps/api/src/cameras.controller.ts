@@ -6,7 +6,7 @@ import {
   Param, ParseUUIDPipe, PayloadTooLargeException, Post, Put, Query, Req, Res,
   ServiceUnavailableException, UnsupportedMediaTypeException,
 } from '@nestjs/common';
-import { activityChatInput, cameraName, cameraZoneInput, ipCameraInput, maxCameraNameLength, maxClipBytes, maxClipMiB, replayOptions, zoneEntryRuleInput, zoneEntryRuleToggle } from '@sensewell/contracts';
+import { activityChatInput, cameraName, cameraZoneInput, ipCameraInput, maxCameraNameLength, maxClipBytes, maxClipMiB, replayGroupOptions, replayOptions, zoneEntryRuleInput, zoneEntryRuleToggle } from '@sensewell/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AuthService } from './auth.js';
 import { ClipStorage, evidenceWindow } from './clip-storage.js';
@@ -407,9 +407,31 @@ export class CamerasController {
   }
 
   @Delete(':id/replay')
-  async stop(@Param('id', ParseUUIDPipe) id: string, @Req() request: FastifyRequest) {
+  async stop(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('passId', new ParseUUIDPipe({ optional: true })) passId: string | undefined,
+    @Req() request: FastifyRequest,
+  ) {
     await this.requireSyntheticCamera(request, id);
-    return this.replay.stop(id);
+    return this.replay.stop(id, passId);
+  }
+
+  @Post('replay-group')
+  @HttpCode(202)
+  async startGroup(@Req() request: FastifyRequest, @Body() body: unknown) {
+    const tenantId = await this.auth.requireTenant(request);
+    const options = replayGroupOptions.safeParse(body);
+    if (!options.success) throw new BadRequestException('Choose three distinct cameras and valid replay timing.');
+    const tracks = await Promise.all(options.data.tracks.map(async ({ cameraId, ...timing }) => {
+      const camera = await this.database.cameras.find(tenantId, cameraId);
+      if (!camera || camera.durationMs === null || camera.startOffsetMs === null) {
+        throw new NotFoundException('Synthetic Camera not found.');
+      }
+      const clip = await this.clips.open(cameraId);
+      await clip.close();
+      return { ...timing, camera: { ...camera, durationMs: camera.durationMs, startOffsetMs: camera.startOffsetMs } };
+    }));
+    return this.replay.startGroup(tenantId, tracks, options.data.bufferMs);
   }
 
   @Get(':id/replay/video')

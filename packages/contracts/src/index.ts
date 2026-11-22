@@ -46,6 +46,19 @@ export const recordingList = z.array(z.object({
 }));
 
 export const replayOptions = z.object({ loop: z.boolean() });
+export const replayGroupOptions = z.strictObject({
+  bufferMs: z.number().int().min(650).max(30_000),
+  tracks: z.array(z.strictObject({
+    cameraId: z.uuid(),
+    delayMs: z.number().int().min(0).max(60_000).optional(),
+    gap: z.strictObject({
+      startMs: z.number().int().min(0).multipleOf(100),
+      endMs: z.number().int().positive().multipleOf(100),
+    }).refine(({ startMs, endMs }) => startMs < endMs).optional(),
+  })).length(3).refine((tracks) => new Set(tracks.map(({ cameraId }) => cameraId)).size === 3),
+});
+export type ReplayGroupTrackOptions = Omit<z.infer<typeof replayGroupOptions>['tracks'][number], 'cameraId'>;
+
 export const replayStatus = z.discriminatedUnion('state', [
   z.object({ state: z.enum(['idle', 'starting', 'stopping', 'finished', 'unavailable']) }),
   z.object({

@@ -153,6 +153,9 @@ export function createDatabase({ max }: { max?: number } = {}) {
       async recordPass(tenantId: string, pass: Pick<typeof replayPasses.$inferInsert, 'cameraId' | 'id' | 'runId' | 'passNumber'>) {
         await forTenant(tenantId, (tx) => tx.insert(replayPasses).values({ ...pass, tenantId }));
       },
+      async recordPasses(tenantId: string, passes: Pick<typeof replayPasses.$inferInsert, 'cameraId' | 'id' | 'runId' | 'passNumber'>[]) {
+        await forTenant(tenantId, (tx) => tx.insert(replayPasses).values(passes.map((pass) => ({ ...pass, tenantId }))));
+      },
       async addIp(tenantId: string, camera: { id: string; name: string; encryptedStream: string }) {
         await forTenant(tenantId, (tx) => tx.insert(cameras).values({ ...camera, tenantId }));
       },

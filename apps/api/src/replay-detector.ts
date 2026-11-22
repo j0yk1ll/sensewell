@@ -4,9 +4,11 @@ import { detectorFrameAnalysis, type ReplayFrameAnalysis } from '@sensewell/cont
 const detectorUrl = process.env.REPLAY_DETECTOR_URL;
 export const replayDisplayDelayMs = 650;
 
-export async function detectObjects(jpeg: Buffer, signal: AbortSignal): Promise<ReplayFrameAnalysis> {
+export async function detectObjects(
+  jpeg: Buffer, signal: AbortSignal, timeoutMs = replayDisplayDelayMs - 50,
+): Promise<ReplayFrameAnalysis> {
   if (!detectorUrl) return { state: 'unavailable' };
-  const timeout = AbortSignal.timeout(replayDisplayDelayMs - 50);
+  const timeout = AbortSignal.timeout(timeoutMs);
   try {
     const endpoint = new URL(detectorUrl);
     const socket = createConnection({

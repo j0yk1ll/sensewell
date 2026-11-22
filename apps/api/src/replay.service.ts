@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout } from 'node:timers/promises';
-import { Injectable, Logger, ServiceUnavailableException, type OnModuleDestroy } from '@nestjs/common';
-import type { ReplayFrameAnalysis, ReplayImage, ReplayStatus, SyntheticCamera } from '@sensewell/contracts';
+import { BadRequestException, ConflictException, Injectable, Logger, ServiceUnavailableException, type OnModuleDestroy } from '@nestjs/common';
+import type { ReplayFrameAnalysis, ReplayGroupTrackOptions, ReplayImage, ReplayStatus, SyntheticCamera } from '@sensewell/contracts';
 import { ClipStorage } from './clip-storage.js';
 import { DatabaseService } from './database.service.js';
 import { detectObjects, replayDisplayDelayMs } from './replay-detector.js';
@@ -23,6 +23,18 @@ interface Replay extends ReplayView {
 }
 
 type ReplayCamera = SyntheticCamera & { startOffsetMs: number };
+type ReplayTrack = ReplayGroupTrackOptions & { camera: ReplayCamera };
+
+interface ReplayClock {
+  monotonicStart: number;
+  utcStart: number;
+  analysisTail: Promise<void>;
+}
+
+const replayCapacity = 4;
+const decoderLeadMs = 250;
+const groupedDetectorTimeoutMs = 1500;
+const lateFrameGraceMs = 2500;
 
 @Injectable()
 export class ReplayService implements OnModuleDestroy {
@@ -43,20 +55,68 @@ export class ReplayService implements OnModuleDestroy {
   async start(tenantId: string, camera: ReplayCamera, loop: boolean) {
     const existing = this.active.get(camera.id);
     if (existing) return this.startedStatus(existing);
-    if (this.active.size >= 4) throw new ServiceUnavailableException('Replay is at capacity. Try again shortly.');
+    this.checkCapacity(1);
 
     const runId = randomUUID();
+    const ready = this.database.cameras.recordPass(tenantId, { cameraId: camera.id, id: runId, runId, passNumber: 1 });
+    return this.startedStatus(this.reserve(tenantId, camera, loop, runId, runId, ready));
+  }
+
+  async startGroup(tenantId: string, tracks: ReplayTrack[], bufferMs: number) {
+    const durationMs = tracks[0]?.camera.durationMs;
+    if (durationMs === undefined || tracks.some(({ camera, gap }) =>
+      camera.startOffsetMs !== 0 || camera.durationMs !== durationMs || (gap && gap.endMs > durationMs))) {
+      throw new BadRequestException('Group recordings must start at zero, share a duration, and contain any configured gaps.');
+    }
+    if (tracks.some(({ camera }) => this.active.has(camera.id))) {
+      throw new ConflictException('A group camera is already replaying.');
+    }
+    this.checkCapacity(tracks.length);
+    const runId = randomUUID();
+    const entries = tracks.map((track) => ({
+      track, pass: { cameraId: track.camera.id, id: randomUUID(), runId, passNumber: 1 },
+    }));
+    const passes = entries.map(({ pass }) => pass);
+    const clock = this.database.cameras.recordPasses(tenantId, passes).then((): ReplayClock => ({
+      monotonicStart: performance.now() + decoderLeadMs,
+      utcStart: Date.now() + decoderLeadMs,
+      analysisTail: Promise.resolve(),
+    }));
+    const ready = clock.then(() => undefined);
+    for (const { track, pass } of entries) {
+      this.reserve(tenantId, track.camera, false, runId, pass.id, ready, { clock, bufferMs, track });
+    }
+    const { utcStart } = await clock.catch(() => {
+      throw new ServiceUnavailableException('Could not start replay. Try again shortly.');
+    });
+    return {
+      runId, startedAt: new Date(utcStart).toISOString(),
+      passes: passes.map(({ cameraId, id }) => ({ cameraId, passId: id })),
+    };
+  }
+
+  private checkCapacity(count: number) {
+    if (this.active.size + count > replayCapacity) {
+      throw new ServiceUnavailableException('Replay is at capacity. Try again shortly.');
+    }
+  }
+
+  private reserve(
+    tenantId: string, camera: ReplayCamera, loop: boolean, runId: string, passId: string,
+    ready: Promise<void>,
+    group?: { clock: Promise<ReplayClock>; bufferMs: number; track: ReplayGroupTrackOptions },
+  ) {
     const replay: Replay = {
       abort: new AbortController(),
       status: { state: 'starting' },
-      ready: this.database.cameras.recordPass(tenantId, { cameraId: camera.id, id: runId, runId, passNumber: 1 }),
-      passId: runId,
+      ready,
+      passId,
       task: Promise.resolve(),
     };
     this.active.set(camera.id, replay);
     this.completed.delete(camera.id);
-    replay.task = this.run(tenantId, camera, loop, runId, replay);
-    return this.startedStatus(replay);
+    replay.task = this.run(tenantId, camera, loop, runId, passId, replay, group);
+    return replay;
   }
 
   private async startedStatus(replay: Replay) {
@@ -66,9 +126,9 @@ export class ReplayService implements OnModuleDestroy {
     return replay.status;
   }
 
-  async stop(cameraId: string) {
+  async stop(cameraId: string, passId?: string) {
     const replay = this.active.get(cameraId);
-    if (replay) {
+    if (replay && (!passId || replay.passId === passId)) {
       replay.status = { state: 'stopping' };
       replay.abort.abort();
       await replay.task;
@@ -112,7 +172,10 @@ export class ReplayService implements OnModuleDestroy {
     await Promise.all([...this.active.keys()].map((id) => this.stop(id)));
   }
 
-  private async run(tenantId: string, camera: ReplayCamera, loop: boolean, runId: string, replay: Replay) {
+  private async run(
+    tenantId: string, camera: ReplayCamera, loop: boolean, runId: string, firstPassId: string, replay: Replay,
+    group?: { clock: Promise<ReplayClock>; bufferMs: number; track: ReplayGroupTrackOptions },
+  ) {
     const signal = replay.abort.signal;
     let result: ReplayStatus = { state: 'idle' };
     let pendingAnalysis: Promise<void> | undefined;
@@ -120,10 +183,14 @@ export class ReplayService implements OnModuleDestroy {
     const totalFrames = Math.ceil((camera.durationMs - camera.startOffsetMs) / replayFrameIntervalMs);
     try {
       await replay.ready;
+      const clock = await group?.clock;
+      const delayMs = group?.track.delayMs ?? 0;
+      const gap = group?.track.gap;
+      const displayLagMs = Math.max(group?.bufferMs ?? 0, delayMs ? delayMs + lateFrameGraceMs : replayDisplayDelayMs);
       let passNumber = 0;
       do {
         const currentPass = ++passNumber;
-        const passId = currentPass === 1 ? runId : randomUUID();
+        const passId = currentPass === 1 ? firstPassId : randomUUID();
         let analyzedFrames = 0;
         const zoneEntries = new ZoneEntryEvaluator();
         if (currentPass > 1) {
@@ -134,24 +201,51 @@ export class ReplayService implements OnModuleDestroy {
 
         for await (const frame of replayFrames(this.clips.path(camera.id), {
           cameraId: camera.id, passId,
-        }, camera, signal)) {
+        }, camera, signal, clock && clock.monotonicStart + delayMs)) {
+          const isGap = gap && frame.sourceMs >= gap.startMs && frame.sourceMs < gap.endMs;
           let analysis: ReplayFrameAnalysis = { state: 'skipped' };
-          if (!pendingAnalysis) {
+          if (isGap) {
+            analysis = { state: 'unavailable' };
+          } else if (!pendingAnalysis) {
             analysis = { state: 'delayed' };
-            pendingAnalysis = this.analyze(tenantId, frame, currentPass, zoneEntries, signal).then((result) => {
+            // The detector services one request at a time. Give every ready camera
+            // a turn, with at most one outstanding frame per camera.
+            const analysisTask = clock
+              ? clock.analysisTail.then(() => signal.aborted
+                ? { state: 'unavailable' } as const
+                : detectObjects(frame.jpeg, signal, groupedDetectorTimeoutMs))
+              : this.analyze(tenantId, frame, currentPass, zoneEntries, signal);
+            if (clock) clock.analysisTail = analysisTask.then(() => undefined, () => undefined);
+            pendingAnalysis = analysisTask.then((result) => {
               analysis = result;
-              if (result.state === 'analyzed') analyzedFrames += 1;
+              if (!clock && result.state === 'analyzed') analyzedFrames += 1;
             }).finally(() => { pendingAnalysis = undefined; });
           }
 
           // Release frames in source order at 1×, with time for inference on each exact image.
-          lastDisplay = setTimeout(replayDisplayDelayMs, undefined, { signal }).then(() => {
+          const displayWait = clock
+            ? clock.monotonicStart + frame.sourceMs + displayLagMs - performance.now()
+            : replayDisplayDelayMs;
+          const priorDisplay = lastDisplay;
+          lastDisplay = setTimeout(displayWait, undefined, { signal }).then(async () => {
+            if (clock) {
+              await priorDisplay;
+              if (signal.aborted) return;
+              if (analysis.state === 'analyzed') {
+                const occurredAt = new Date(clock.utcStart + frame.sourceMs);
+                analysis = await this.recordAnalysis(tenantId, frame, currentPass, zoneEntries, signal, occurredAt, analysis);
+                if (analysis.state === 'analyzed') analyzedFrames += 1;
+              } else if (analysis.state !== 'skipped') {
+                zoneEntries.interrupt();
+              }
+            }
+            if (signal.aborted) return;
             replay.frame = { ...frame, passNumber: currentPass, analysis, analyzedFrames, totalFrames };
             replay.status = { state: 'running', passId, passNumber: currentPass, sourceMs: frame.sourceMs };
           }, () => undefined);
         }
         await pendingAnalysis;
-        replay.passId = undefined;
+        if (loop) replay.passId = undefined;
       } while (loop && !signal.aborted);
       await lastDisplay;
       if (!signal.aborted) result = { state: 'finished' };
@@ -163,6 +257,7 @@ export class ReplayService implements OnModuleDestroy {
     } finally {
       if (result.state !== 'finished') replay.abort.abort();
       await pendingAnalysis;
+      await lastDisplay;
       replay.status = result;
       this.completed.set(camera.id, {
         status: result,
@@ -178,13 +273,25 @@ export class ReplayService implements OnModuleDestroy {
 
   private async analyze(
     tenantId: string,
-    { jpeg, cameraId, passId, sourceMs }: ReplayFrame,
+    frame: ReplayFrame,
     passNumber: number,
     zoneEntries: ZoneEntryEvaluator,
     signal: AbortSignal,
   ) {
     const occurredAt = new Date();
-    const result = await detectObjects(jpeg, signal);
+    const result = await detectObjects(frame.jpeg, signal);
+    return this.recordAnalysis(tenantId, frame, passNumber, zoneEntries, signal, occurredAt, result);
+  }
+
+  private async recordAnalysis(
+    tenantId: string,
+    { jpeg, cameraId, passId, sourceMs }: ReplayFrame,
+    passNumber: number,
+    zoneEntries: ZoneEntryEvaluator,
+    signal: AbortSignal,
+    occurredAt: Date,
+    result: ReplayFrameAnalysis,
+  ) {
     if (result.state !== 'analyzed') zoneEntries.interrupt();
     if (result.state === 'analyzed' && !signal.aborted) {
       const { detections } = result;
