@@ -46,7 +46,13 @@ From the repository root, render all five fixture variants.
 blender -b -t 6 --python-exit-code 1 -P scripts/warehouse-demo/render.py -- --output warehouse-fixtures
 ```
 
-Use `--scenario transfer` to render a single variant. Add `--still 6 --still 10 --still 18` for previews at selected source times. Output defaults to 960 × 540. The default Workbench renderer reuses stills for the stationary part of the dwell and across variants that share the same choreography. Use `--engine BLENDER_EEVEE` for higher-quality lighting at a longer render time.
+To render just the normal transfer, run:
+
+```sh
+blender -b -t 6 --python-exit-code 1 -P scripts/warehouse-demo/render.py -- --scenario transfer --output warehouse-fixtures
+```
+
+This writes `staging.mp4`, `aisle.mp4`, `dispatch.mp4`, and `manifest.json` to `warehouse-fixtures/transfer/`. Each video starts at 00:00 and contains 240 frames at 10 fps over 24 seconds. Use `--still 6 --still 9 --still 18` to render preview PNGs at those times in place of the videos. Output defaults to 960 × 540. The default Workbench renderer reuses stills for the stationary part of the dwell and across variants that share the same choreography. Use `--engine BLENDER_EEVEE` for higher-quality lighting at a longer render time.
 
 After rendering the transfer, regenerate the bundled RTSP loop with:
 
@@ -63,7 +69,17 @@ sh scripts/warehouse-demo/container/pack-cameras.sh warehouse-fixtures/transfer 
 | `dwell` | F1 enters the loading zone at 00:04, reaches five minutes at 05:04, and leaves at 05:14 | One continuous qualifying occurrence |
 | `dwell-gap` | Same dwell with dispatch coverage absent from 02:35 to 03:05 | Continuous presence is undecided. The other cameras cannot establish it |
 
-Inspect the transfer around 00:09–00:10 in staging and aisle, and around 00:15–00:16 in aisle and dispatch. The edge views show parts of the same forklift and load during the overlaps. The aisle sees both midway through the handoff. At 00:23, dispatch shows the pallet on the floor after the forklift has backed away.
+F1 picks up P1 in the staging zone, crosses the transfer aisle, and sets P1 down in the loading zone within dispatch. Staging and the transfer aisle meet at X = −5 m. The cameras overlap across that boundary so the staging view can still see part of the departing forklift as the aisle view picks up its front and load. The aisle and dispatch views overlap across X = 5 m in the same way.
+
+Compare these zero-based frames in the `transfer` clips. The manifest uses `F1` for the forklift and `P1` for its pallet throughout.
+
+| Source time | Frame | Views | What to verify |
+| --- | ---: | --- | --- |
+| 00:06 | 60 | Staging | F1 finishes lifting P1. Matches `groundTruth.pickupMs` (6000). |
+| 00:09 | 90 | Staging and aisle | F1 is at X = −5.1 m with P1 raised. Staging shows the rear of F1 at the right edge. The aisle shows the front and P1 at the left edge. |
+| 00:16 | 160 | Aisle and dispatch | F1 is at X = 5 m with P1 raised. The aisle shows F1 at the right edge, and dispatch shows F1 and P1 entering on the left. |
+| 00:18 | 180 | Dispatch | F1 finishes lowering P1. Matches `groundTruth.deliveryMs` (18000). |
+| 00:23 | 230 | Dispatch | P1 stays on the floor after F1 backs away. |
 
 ## Import and replay through Sensewell
 
@@ -103,7 +119,7 @@ Each scenario directory has a `manifest.json` with camera IDs and files, the sha
 - Floor points are in meters on Blender’s ground plane, with +X running from staging toward dispatch and +Y toward the racks. Each zone is a rectangle `[minX, minY, maxX, maxY]`. Each camera’s row-major `floorToImage` matrix multiplies `[X, Y, 1]`. Divide its first two outputs by the third to get normalized image coordinates from the top-left corner.
 - Choreography entries give `[second, [X, Y, liftHeight]]` for each forklift. Interpolate linearly between entries. The F1 and P1 times in `groundTruth` apply across all views. For dwell, 05:04 is the exact five-minute boundary, so a strictly-greater rule can first qualify on the following 10 fps frame at 05:04.100.
 - Compare the footage-derived result with `expected`, keeping camera and source times together. An unavailable interval carries missing coverage. A processed frame can also have zero detections. Real detector output depends on the model and available inference throughput.
-- Use `ffprobe` to check stream timing and `ffmpeg -ss 10 -i aisle.mp4 -frames:v 1 aisle-10s.png` to inspect an exact source timestamp. The corresponding frame is index 100 in each 10 fps recording.
+- Use `ffprobe` to check stream timing. From the `transfer` directory, extract the staging and aisle frames at 00:09 with `ffmpeg -ss 9 -i staging.mp4 -frames:v 1 staging-9s.png` and `ffmpeg -ss 9 -i aisle.mp4 -frames:v 1 aisle-9s.png`.
 
 ## Local verification
 
