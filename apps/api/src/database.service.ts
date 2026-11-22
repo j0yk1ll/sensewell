@@ -11,6 +11,7 @@ export class DatabaseService implements OnApplicationShutdown {
   readonly zoneEntries = this.database.zoneEntries;
   readonly zoneActivity = this.database.zoneActivity;
   readonly observations = this.database.observations;
+  readonly dwell = this.database.dwell;
   readonly recordings = this.database.recordings;
   readonly authPool = this.database.authPool;
 

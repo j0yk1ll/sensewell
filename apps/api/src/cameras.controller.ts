@@ -118,6 +118,20 @@ export class CamerasController {
     return this.sendMp4(await this.ipCameras.open(id, recordingId), request, reply);
   }
 
+  @Get(':id/trigger-events/:eventId/recordings/:recordingId')
+  async triggerEvidence(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Param('recordingId', ParseUUIDPipe) recordingId: string,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ) {
+    const { tenantId } = await this.requireCamera(request, id);
+    const evidence = await this.database.dwell.eventEvidence(tenantId, id, eventId, recordingId);
+    if (!evidence) throw new NotFoundException('Trigger evidence not found.');
+    return this.sendMp4(await this.ipCameras.open(evidence.cameraId, evidence.recordingId), request, reply);
+  }
+
   @Get(':id/zones')
   @Header('Cache-Control', 'private, no-store')
   async listZones(@Param('id', ParseUUIDPipe) id: string, @Req() request: FastifyRequest) {

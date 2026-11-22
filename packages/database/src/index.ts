@@ -3,13 +3,16 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, gte, isNotNull, lt, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
+import { recordingFields, recordingScope } from './recording-store.js';
+import { createDwellStore } from './dwell-store.js';
 import { requireEnv } from './require-env.js';
 import { authUser, cameraEndpointAdministrators, cameraEndpoints, cameraRecordings, cameras, cameraZones, operationalEvents, replayObservations, replayPasses, replayZoneEntries, zoneEntryRules } from './schema.js';
 
 export { normalizeCameraEndpoint, streamEndpoint } from './camera-endpoint.js';
 export { cameraRecordings, cameras, cameraZones, operationalEvents, replayObservations, replayPasses, replayZoneEntries, zoneEntryRules } from './schema.js';
 
-type TenantTransaction = Parameters<Parameters<ReturnType<typeof drizzle>['transaction']>[0]>[0];
+export type TenantTransaction = Parameters<Parameters<ReturnType<typeof drizzle>['transaction']>[0]>[0];
+export type ForTenant = <T>(tenantId: string, query: (tx: TenantTransaction) => Promise<T>) => Promise<T>;
 type RuleInput = Pick<typeof zoneEntryRules.$inferInsert, 'name' | 'zoneId' | 'minimumConfidence' | 'eventType' | 'objectTypes'>;
 type Observation = Omit<typeof replayObservations.$inferInsert, 'tenantId' | 'eventJpeg' | 'zoneActivity'>;
 type Crossing = { rule: ActiveRule; detectionIndex: number; ground?: GroundDecision; direction: (typeof replayZoneEntries.$inferSelect)['direction'] };
@@ -55,14 +58,7 @@ export function createDatabase({ max }: { max?: number } = {}) {
   const observationPass = (tenantId: string, cameraId: string, passId: string) => and(
     eq(replayObservations.tenantId, tenantId), eq(replayObservations.cameraId, cameraId), eq(replayObservations.passId, passId),
   );
-  const recordingFields = {
-    id: cameraRecordings.id,
-    startedAt: cameraRecordings.startedAt,
-    endedAt: cameraRecordings.endedAt,
-  };
   const cameraScope = (tenantId: string, id: string) => and(eq(cameras.tenantId, tenantId), eq(cameras.id, id));
-  const recordingScope = (tenantId: string, cameraId: string) =>
-    and(eq(cameraRecordings.tenantId, tenantId), eq(cameraRecordings.cameraId, cameraId));
   const zoneFields = {
     id: cameraZones.id,
     name: cameraZones.name,
@@ -118,6 +114,7 @@ export function createDatabase({ max }: { max?: number } = {}) {
       await database.execute(sql`select 1 from ${operationalEvents} where false`);
     },
     forTenant,
+    dwell: createDwellStore(forTenant),
     endpoints: {
       async canManage(userId: string) {
         const [admin] = await database.select({ id: cameraEndpointAdministrators.userId })

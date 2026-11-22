@@ -40,7 +40,7 @@ export const cameraEndpointSettings = z.object({
   endpoints: z.array(z.string()),
 });
 
-export { detectorFrameAnalysis, replayFrameAnalysis, warehouseObjectLabels, warehouseObjectType } from './replay-analysis.js';
+export { boxOverlap, detectorFrameAnalysis, replayFrameAnalysis, warehouseObjectLabels, warehouseObjectType } from './replay-analysis.js';
 export type { ObjectDetection, ReplayFrameAnalysis, WarehouseObjectType } from './replay-analysis.js';
 export { zoneEntryEvidence, zoneEntryHistory, zoneEntryRule, zoneEntryRuleInput, zoneEntryRuleList, zoneEntryRuleToggle, zoneRuleEventType } from './zone-entry.js';
 export type { ZoneCrossingDirection, ZoneEntryEvent, ZoneEntryRule, ZoneEntryRuleInput, ZoneRuleEventType } from './zone-entry.js';
@@ -48,3 +48,9 @@ export { zoneActivity, zoneActivityFrame, zoneActivityPasses, zoneActivityRuleKe
 export type { ZoneActivity, ZoneActivityFrame } from './zone-activity.js';
 export { calibrateGroundZone } from './ground-zone.js';
 export type { GroundZone, GroundDecision } from './ground-zone.js';
+
+export {
+  confirmationGapMs, dwellMatch, dwellTrigger, evidenceClip, forkliftDwellCondition, forkliftDwellLookbackMs, forkliftDwellMs,
+  triggerDraft, triggerDraftInput, triggerPreview, triggerPreviewRange, triggerToggle, triggerWorkspace,
+} from './forklift-dwell.js';
+export type { DwellCandidate, DwellMatch, DwellRecording, ForkliftDwellCondition, PublishedDwell, RecordingObservation, TriggerPreview, TriggerRange } from './forklift-dwell.js';

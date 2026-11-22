@@ -1,4 +1,4 @@
-import { calibrateGroundZone, warehouseObjectType, zoneActivityRuleKey, type GroundDecision, type GroundZone, type ObjectDetection, type WarehouseObjectType, type ZoneActivityFrame, type ZoneCrossingDirection, type ZonePoint, type ZoneRuleEventType } from '@sensewell/contracts';
+import { boxOverlap, calibrateGroundZone, confirmationGapMs, warehouseObjectType, zoneActivityRuleKey, type GroundDecision, type GroundZone, type ObjectDetection, type WarehouseObjectType, type ZoneActivityFrame, type ZoneCrossingDirection, type ZonePoint, type ZoneRuleEventType } from '@sensewell/contracts';
 
 import { groundPosition } from './ground-position.js';
 
@@ -12,6 +12,7 @@ interface EntryRule {
   objectTypes: string[];
   points: ZonePoint[];
   ground?: GroundZone | null;
+  strictIdentity?: boolean;
 }
 
 type RuleFrame = ZoneActivityFrame['rules'][number];
@@ -39,17 +40,10 @@ interface Track {
 
 const recoveryMs = 500;
 const boundaryCrossingMs = 1500;
-export const confirmationGapMs = 400;
+export { confirmationGapMs };
 const minimumTrackOverlap = 0.3;
 const competingTrackOverlap = 0.15;
 
-function boxOverlap(a: ObjectDetection['box'], b: ObjectDetection['box']) {
-  const width = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0]));
-  const height = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
-  const intersection = width * height;
-  const union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - intersection;
-  return intersection / union;
-}
 
 function clipAtBound(points: ZonePoint[], axis: keyof ZonePoint, bound: number, sign: number) {
   const clipped: ZonePoint[] = [];
@@ -111,12 +105,12 @@ export class ZoneEntryEvaluator {
 
   evaluate<Rule extends EntryRule>(sourceMs: number, detections: ObjectDetection[], rules: Rule[]) {
     const tracks = this.tracks.filter((track) => sourceMs - track.sourceMs <= recoveryMs);
-    const calibratedTypes = new Set(rules.filter(({ ground }) => ground).flatMap(({ objectTypes }) => objectTypes));
+    const strictTypes = new Set(rules.filter(({ ground, strictIdentity }) => ground || strictIdentity).flatMap(({ objectTypes }) => objectTypes));
     const candidates = detections.map(({ box, objectType }) => {
       const overlaps = tracks.filter((track) => track.detection.objectType === objectType)
         .map((track) => ({ track, overlap: boxOverlap(track.detection.box, box) }));
       const strong = overlaps.filter(({ overlap }) => overlap >= minimumTrackOverlap);
-      if (calibratedTypes.has(objectType) && strong.length === 1) {
+      if (strictTypes.has(objectType) && strong.length === 1) {
         // A lower-overlap track can veto a match, but cannot establish one.
         const plausible = overlaps.filter(({ overlap }) => overlap >= competingTrackOverlap);
         if (plausible.length > 1) return plausible.map(({ track }) => track);

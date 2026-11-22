@@ -10,6 +10,7 @@ import { DatabaseService } from './database.service.js';
 import { AuthController, AuthService } from './auth.js';
 import { CamerasController } from './cameras.controller.js';
 import { CameraEndpointsController } from './camera-endpoints.controller.js';
+import { DwellTriggersController } from './dwell-triggers.controller.js';
 import { IpCameraService } from './ip-camera.service.js';
 
 @Controller('api')
@@ -31,7 +32,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, AuthController, CamerasController, CameraEndpointsController],
+  controllers: [HealthController, AuthController, CamerasController, CameraEndpointsController, DwellTriggersController],
   providers: [DatabaseService, AuthService, IpCameraService],
 })
 export class AppModule {}

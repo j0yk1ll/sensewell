@@ -1,4 +1,4 @@
-import { cameraEndpointSettings, cameraList, cameraZone, cameraZoneList, captureStatus, ipCamera, recordingList, type CameraZoneInput, type IpCameraInput } from '@sensewell/contracts';
+import { cameraEndpointSettings, dwellTrigger, triggerDraft, triggerPreview, triggerWorkspace, cameraList, cameraZone, cameraZoneList, captureStatus, ipCamera, recordingList, type CameraZoneInput, type IpCameraInput, type TriggerRange } from '@sensewell/contracts';
 
 export class CameraApiError extends Error {
   constructor(readonly status: number, message: string) {
@@ -98,3 +98,28 @@ export function cameraZoneQuery(id: string, tenantId: string) {
     retry: false,
   };
 }
+
+const triggerPath = (cameraId: string) => `${cameraPath(cameraId)}/triggers`;
+
+export const triggerApi = {
+  evidence: (cameraId: string, eventId: string, recordingId: string) =>
+    `${cameraPath(cameraId)}/trigger-events/${eventId}/recordings/${recordingId}`,
+  workspace(cameraId: string, signal: AbortSignal) {
+    return request(triggerPath(cameraId), triggerWorkspace, 'Could not load triggers.', { signal });
+  },
+  draft(cameraId: string, zoneId: string, description: string) {
+    return request(triggerPath(cameraId), triggerDraft, 'Could not interpret the request. Check your language model configuration.', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ zoneId, request: description }),
+    });
+  },
+  setEnabled(cameraId: string, triggerId: string, enabled: boolean) {
+    return request(`${triggerPath(cameraId)}/${triggerId}/enabled`, dwellTrigger, 'Could not update the trigger.', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }),
+    });
+  },
+  preview(cameraId: string, triggerId: string, range: TriggerRange) {
+    return request(`${triggerPath(cameraId)}/${triggerId}/preview`, triggerPreview, 'Could not preview the condition.', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(range),
+    });
+  },
+};

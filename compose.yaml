@@ -36,6 +36,11 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       BETTER_AUTH_TRUSTED_ORIGINS: ${BETTER_AUTH_TRUSTED_ORIGINS:-http://127.0.0.1:3000}
       RECORDING_STORAGE_DIR: /app/recordings
+      REPLAY_DETECTOR_URL: ${REPLAY_DETECTOR_URL:-}
+      LLAMA_CPP_CHAT_URL: ${LLAMA_CPP_CHAT_URL:-}
+      LLAMA_CPP_MODEL: ${LLAMA_CPP_MODEL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      TRIGGER_MODEL: ${TRIGGER_MODEL:-}
     volumes:
       - camera-recordings:/app/recordings
     depends_on:

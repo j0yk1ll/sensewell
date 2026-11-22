@@ -9,7 +9,7 @@
       "dependsOn": ["^build"],
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["DATABASE_URL", "BETTER_AUTH_SECRET", "BETTER_AUTH_URL", "BETTER_AUTH_TRUSTED_ORIGINS", "RECORDING_STORAGE_DIR"]
+      "passThroughEnv": ["DATABASE_URL", "BETTER_AUTH_SECRET", "BETTER_AUTH_URL", "BETTER_AUTH_TRUSTED_ORIGINS", "RECORDING_STORAGE_DIR", "REPLAY_DETECTOR_URL", "LLAMA_CPP_CHAT_URL", "LLAMA_CPP_MODEL", "OPENAI_API_KEY", "TRIGGER_MODEL"]
     },
     "typecheck": {
       "dependsOn": ["^build"]

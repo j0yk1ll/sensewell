@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { CameraRemoval } from './camera-removal';
 import { cameraApi } from './camera-api';
+import { DwellTriggers } from './dwell-triggers';
 import { ZoneEditor } from './zone-editor';
 
 const captureLabel: Record<CaptureStatus['state'], string> = {
@@ -42,6 +43,7 @@ export function IpCameraViewer({ camera, tenantId, onRemoved }: {
       </div>
       <LivePreview id={camera.id} tenantId={tenantId} connected={connected} status={status} />
       <Recordings cameraId={camera.id} tenantId={tenantId} unavailable={capture.data?.state === 'unavailable' || capture.data?.state === 'blocked'} />
+      <DwellTriggers cameraId={camera.id} tenantId={tenantId} />
     </Card>
   );
 }

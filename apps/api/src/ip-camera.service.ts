@@ -8,6 +8,8 @@ import { DatabaseService } from './database.service.js';
 import { captureStream, publishSegment } from './ip-camera-capture.js';
 import { decryptStream } from './ip-camera-source.js';
 import { jpegPart } from './jpeg-stream.js';
+import { observeRecording } from './recording-observations.js';
+import { evaluateForkliftDwell } from './forklift-dwell.js';
 
 interface Capture {
   abort: AbortController;
@@ -67,7 +69,10 @@ export class IpCameraService implements OnModuleInit, OnModuleDestroy {
       abort: new AbortController(), endpoint, state: 'connecting', task: Promise.resolve(),
     };
     this.captures.set(id, capture);
-    capture.task = this.run(tenantId, id, stream, capture);
+    capture.task = Promise.all([
+      this.run(tenantId, id, stream, capture),
+      this.analyze(tenantId, id, capture.abort.signal),
+    ]).then(() => undefined);
   }
 
   async stop(id: string) {
@@ -101,6 +106,27 @@ export class IpCameraService implements OnModuleInit, OnModuleDestroy {
 
   private directory(id: string) {
     return join(this.root, id);
+  }
+
+  private async analyze(tenantId: string, cameraId: string, signal: AbortSignal) {
+    if (!process.env.REPLAY_DETECTOR_URL) return;
+    while (!signal.aborted) {
+      try {
+        const segment = await this.database.dwell.nextRecording(tenantId, cameraId);
+        if (segment) {
+          const path = join(this.directory(cameraId), `${segment.id}.mp4`);
+          const observations = await observeRecording(path, signal);
+          signal.throwIfAborted();
+          await this.database.dwell.publish(tenantId, cameraId, segment, observations,
+            ({ condition, activeSince, cameraId }, recordings, range, published) =>
+              evaluateForkliftDwell(condition, recordings, range, activeSince.getTime(), cameraId, published).matches);
+          continue;
+        }
+      } catch {
+        if (!signal.aborted) this.logger.warn(`Recording analysis failed for camera ${cameraId}`);
+      }
+      await setTimeout(1000, undefined, { signal }).catch(() => undefined);
+    }
   }
 
   private async run(tenantId: string, id: string, stream: URL, capture: Capture) {

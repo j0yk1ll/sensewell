@@ -43,6 +43,17 @@ Approve only endpoints you trust. The list checks the submitted address. FFmpeg 
 
 The initial input is RTSP over TCP. The app records video as browser-playable H.264 using the existing FFmpeg runtime. For a local run outside Compose, set `RECORDING_STORAGE_DIR` to choose a private storage directory. The default is `.sensewell-recordings` in the API working directory.
 
+## Monitor a five-minute forklift dwell
+
+Start the warehouse detector with the model described in [Calibrated ground position](docs/warehouse-ground-position.md#reproduce-the-comparison). Set `REPLAY_DETECTOR_URL` to its TCP address as seen by the API. For trigger interpretation, set `LLAMA_CPP_CHAT_URL` to the local server’s Chat Completions endpoint and `LLAMA_CPP_MODEL` to its model name. Alternatively, set `OPENAI_API_KEY` and optionally `TRIGGER_MODEL`. The model receives the request and selected zone name. Footage analysis runs through the detector.
+
+1. Select a camera with a loading zone. In **Triggers**, select the zone and enter a request such as “Flag a forklift that stays in this zone for five minutes.”
+2. Review the interpreted condition. Select a past time range of up to one hour and choose **Preview on recorded footage** to see hypothetical matches and undecided intervals.
+3. Choose **Confirm condition and enable**. Monitoring starts with the next confirmed entry. Each reactivation starts a fresh window.
+4. Open a match in **Trigger History** to play the entry and dwell evidence.
+
+The detector analyzes completed recording segments in the background. Unanalyzed footage and gaps in identity or zone membership can leave an interval undecided. To use overlapping camera coverage, calibrate the views to the same floor plan and save the same floor polygon on each view before drafting the trigger. Sensewell uses overlapping, time-aligned floor positions to link the sightings. The trigger keeps the approved zone and calibration snapshots.
+
 ## Work on the apps
 
 Use Node.js 24 and the pnpm version in `package.json`. Run `corepack enable` to activate that version and `pnpm install --frozen-lockfile` to install workspace dependencies. `pnpm lint`, `pnpm typecheck`, and `pnpm build` run from the repository root.

@@ -1,4 +1,4 @@
-import type { GroundDecision, GroundZone, ZoneActivityFrame } from '@sensewell/contracts';
+import type { PublishedDwell, ForkliftDwellCondition, GroundDecision, GroundZone, RecordingObservation, ZoneActivityFrame } from '@sensewell/contracts';
 import { sql } from 'drizzle-orm';
 import { boolean, check, doublePrecision, foreignKey, index, integer, jsonb, pgPolicy, pgRole, pgTable, primaryKey, text, timestamp, unique, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
@@ -161,6 +161,7 @@ export const cameraRecordings = pgTable('camera_recordings', {
   cameraId: uuid('camera_id').notNull(),
   startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
   endedAt: timestamp('ended_at', { withTimezone: true }).notNull(),
+  observations: jsonb().$type<RecordingObservation[]>(),
 }, (recording) => [
   tenantIsolation(recording.tenantId),
   foreignKey({
@@ -169,6 +170,7 @@ export const cameraRecordings = pgTable('camera_recordings', {
     foreignColumns: [cameras.tenantId, cameras.id],
   }).onDelete('cascade'),
   index().on(recording.tenantId, recording.cameraId, recording.startedAt),
+  index('camera_recordings_pending_analysis').on(recording.tenantId, recording.cameraId, recording.startedAt).where(sql`${recording.observations} is null`),
 ]).enableRLS();
 
 export const cameraEndpointAdministrators = pgTable('camera_endpoint_administrators', {
@@ -243,4 +245,46 @@ export const replayZoneEntries = pgTable('replay_zone_entries', {
     foreignColumns: [replayObservations.tenantId, replayObservations.cameraId, replayObservations.passId, replayObservations.sourceMs],
   }),
   index().on(entry.tenantId, entry.cameraId),
+]).enableRLS();
+
+export const dwellTriggers = pgTable('dwell_triggers', {
+  id: uuid().defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  cameraId: uuid('camera_id').notNull(),
+  condition: jsonb().$type<ForkliftDwellCondition>().notNull(),
+  reviewed: boolean().default(false).notNull(),
+  activeSince: timestamp('active_since', { withTimezone: true, precision: 3 }),
+}, (trigger) => [
+  tenantIsolation(trigger.tenantId),
+  foreignKey({
+    name: 'dwell_triggers_camera_fk',
+    columns: [trigger.tenantId, trigger.cameraId],
+    foreignColumns: [cameras.tenantId, cameras.id],
+  }),
+  unique().on(trigger.tenantId, trigger.cameraId, trigger.id),
+]).enableRLS();
+
+export const dwellTriggerEvents = pgTable('dwell_trigger_events', {
+  id: uuid().primaryKey(),
+  tenantId: uuid('tenant_id').notNull(),
+  cameraId: uuid('camera_id').notNull(),
+  triggerId: uuid('trigger_id').notNull(),
+  occurrenceKey: text('occurrence_key').notNull(),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  match: jsonb().$type<PublishedDwell>().notNull(),
+  condition: jsonb().$type<ForkliftDwellCondition>().notNull(),
+}, (event) => [
+  tenantIsolation(event.tenantId),
+  foreignKey({
+    name: 'dwell_events_trigger_fk',
+    columns: [event.tenantId, event.cameraId, event.triggerId],
+    foreignColumns: [dwellTriggers.tenantId, dwellTriggers.cameraId, dwellTriggers.id],
+  }),
+  foreignKey({
+    name: 'dwell_events_operational_fk',
+    columns: [event.tenantId, event.id],
+    foreignColumns: [operationalEvents.tenantId, operationalEvents.id],
+  }),
+  unique().on(event.triggerId, event.occurrenceKey),
+  index().on(event.tenantId, event.cameraId, event.occurredAt),
 ]).enableRLS();
