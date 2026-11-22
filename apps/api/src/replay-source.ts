@@ -45,6 +45,20 @@ export async function* jpegFrames(stream: Readable) {
   }
 }
 
+export function replayDecoderArgs(path: string, lengthMs: number, seekMs = 0) {
+  return [
+    '-nostdin', '-v', 'error', '-xerror', '-threads', '2', '-filter_threads', '1',
+    ...clipInput.flags, ...(seekMs === 0 ? [] : ['-ss', String(seekMs / 1000)]),
+    '-i', path, '-t', String(lengthMs / 1000),
+    '-map', `0:${clipInput.videoStream}`, '-vf', [
+      'setpts=PTS-STARTPTS',
+      `fps=${framesPerSecond}:start_time=0:round=up`,
+      "scale=w='min(960,iw)':h='min(540,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
+    ].join(','),
+    '-c:v', 'mjpeg', '-threads', '1', '-f', 'mpjpeg', 'pipe:1',
+  ];
+}
+
 // Each pass follows the clip timeline. Backpressure limits decode-ahead.
 export async function* replayFrames(
   path: string,
@@ -53,16 +67,9 @@ export async function* replayFrames(
   signal: AbortSignal,
   sharedStart?: number,
 ): AsyncGenerator<ReplayFrame> {
-  const decoder = spawn('ffmpeg', [
-    '-nostdin', '-v', 'error', '-xerror', '-threads', '2', '-filter_threads', '1',
-    ...clipInput.flags, '-i', path, '-t', String((durationMs - startOffsetMs) / 1000),
-    '-map', `0:${clipInput.videoStream}`, '-vf', [
-      'setpts=PTS-STARTPTS',
-      `fps=${framesPerSecond}:start_time=0:round=up`,
-      "scale=w='min(960,iw)':h='min(540,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
-    ].join(','),
-    '-c:v', 'mjpeg', '-threads', '1', '-f', 'mpjpeg', 'pipe:1',
-  ], { stdio: ['ignore', 'pipe', 'ignore'], signal, killSignal: 'SIGKILL' });
+  const decoder = spawn('ffmpeg', replayDecoderArgs(path, durationMs - startOffsetMs), {
+    stdio: ['ignore', 'pipe', 'ignore'], signal, killSignal: 'SIGKILL',
+  });
 
   const exited = new Promise<boolean>((resolve) => {
     decoder.once('error', () => resolve(false));
