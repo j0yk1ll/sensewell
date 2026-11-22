@@ -1,6 +1,6 @@
 # Warehouse_027 / Camera_0004 zone-entry check
 
-Replay the 60-second Warehouse_027 / Camera_0004 clip with the RF-DETR Small Warehouse model. Footage is licensed under CC BY 4.0. Sensewell adds the zone and detection overlays. [NVIDIA PhysicalAI-SmartSpaces source clip](https://huggingface.co/datasets/nvidia/PhysicalAI-SmartSpaces/blob/main/MTMC_Tracking_2026/test/Warehouse_027/videos/Camera_0004.mp4) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+This historical check used the 60-second Warehouse_027 / Camera_0004 clip and the RF-DETR Small Warehouse model. Footage is licensed under CC BY 4.0. Sensewell adds the zone and detection overlays. [NVIDIA PhysicalAI-SmartSpaces source clip](https://huggingface.co/datasets/nvidia/PhysicalAI-SmartSpaces/blob/main/MTMC_Tracking_2026/test/Warehouse_027/videos/Camera_0004.mp4) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 
 ## Original annotated crossing
 
@@ -48,9 +48,9 @@ The check also fetched the original pass's evidence after the loop advanced to p
 
 ## Inspect uncertainty in Zone activity
 
-Choose a replay pass below **Event history**. The panel reports confirmed observed entries, estimated distinct entrant tracks, and observed occupancy for each enabled rule and object class. An entry-only rule still uses observed exits to establish dwell. Select a source time in seconds to inspect the nearest analyzed observation at or before that time, within 400 ms and within the analyzed range. The panel shows the actual observation time and tracks whose positions are unknown at that observation. Missing or filtered detections can make observed occupancy lower than actual occupancy.
+In the original check, **Zone activity** reported confirmed observed entries, estimated distinct entrant tracks, and observed occupancy for each enabled rule and object class. An entry-only rule still uses observed exits to establish dwell. Selecting a source time in seconds showed the nearest analyzed observation at or before that time, within 400 ms and within the analyzed range. The panel showed the actual observation time and tracks whose positions are unknown at that observation. Missing or filtered detections can make observed occupancy lower than actual occupancy.
 
-Open **Crossing evidence**, **Observation gaps**, or **Visits and dwell** to inspect the source times and qualifying confidence scores. Select an observation to see its detection and saved zone overlaid on the source frame, with the replay pass and source time shown together. Possible crossings have an interval between the last qualifying observations on opposite sides. Only confirmed crossings qualify for operational events and entry counts. When a person is first observed inside, occupancy includes that observation and the visit has an unknown entry. Dwell is calculated only when a visit has a confirmed entry and exit. Ambiguous associations, expired tracks, and the end of a replay pass close open visits as partial. Each pass starts with fresh tracks, so the jump back to the start cannot create an entry or exit.
+**Crossing evidence**, **Observation gaps**, and **Visits and dwell** showed source times and qualifying confidence scores. Selecting an observation overlaid its detection and saved zone on the source frame and showed the replay pass and source time. Possible crossings have an interval between the last qualifying observations on opposite sides. Only confirmed crossings qualify for operational events and entry counts. When a person is first observed inside, occupancy includes that observation and the visit has an unknown entry. Dwell is calculated only when a visit has a confirmed entry and exit. Ambiguous associations, expired tracks, and the end of a replay pass close open visits as partial. Each pass starts with fresh tracks, so the jump back to the start cannot create an entry or exit.
 
 ### Camera_0004 verification
 

@@ -51,14 +51,3 @@ export const detectorFrameAnalysis = z.union([
 ]);
 
 export type ReplayFrameAnalysis = z.infer<typeof replayFrameAnalysis>;
-
-export const replayImage = z.object({
-  passId: z.uuid(),
-  passNumber: z.number().int().positive(),
-  sourceMs: z.number().int().nonnegative(),
-  jpeg: z.string().max(1_398_104),
-  analysis: replayFrameAnalysis,
-  analyzedFrames: z.number().int().nonnegative(),
-  totalFrames: z.number().int().positive(),
-});
-export type ReplayImage = z.infer<typeof replayImage>;

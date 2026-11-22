@@ -2,7 +2,8 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import process from 'node:process';
 import { detectObjects } from '../../apps/api/dist/replay-detector.js';
-import { jpegFrames, replayDecoderArgs, replayFrameIntervalMs } from '../../apps/api/dist/replay-source.js';
+import { jpegFrames } from '../../apps/api/dist/jpeg-stream.js';
+import { replayDecoderArgs, replayFrameIntervalMs } from '../../apps/api/dist/replay-source.js';
 
 const [clip, start, end] = process.argv.slice(2);
 const [startMs, endMs] = [start, end].map((seconds) => Number(seconds) * 1000);

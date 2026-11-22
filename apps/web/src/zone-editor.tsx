@@ -6,7 +6,7 @@ import { useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } fro
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { cameraApi, cameraZoneQuery, zoneEntryRuleQuery } from './camera-api';
+import { cameraApi, cameraZoneQuery } from './camera-api';
 import { ZoneOverlay } from './zone-overlay';
 
 type ZoneDraft = CameraZoneInput & { zoneId?: string };
@@ -72,7 +72,6 @@ export function ZoneEditor({ id, tenantId, sourceSize, children, timeline }: {
         saved.filter((entry) => entry.id !== zone.id));
       setRemoving(undefined);
       setMessage(`Removed ${zone.name}.`);
-      void queryClient.invalidateQueries({ queryKey: zoneEntryRuleQuery(id, tenantId).queryKey });
     },
     onSettled: refreshZones,
   });

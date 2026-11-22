@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { maxCameraNameLength, maxCameraStreamUrlLength, maxClipBytes, maxClipMiB, type Camera } from '@sensewell/contracts';
+import { maxCameraNameLength, maxCameraStreamUrlLength, type IpCamera } from '@sensewell/contracts';
 import { useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label';
 import { CameraEndpointSettings } from './camera-endpoint-settings';
 import { cameraApi, CameraApiError } from './camera-api';
 import { IpCameraViewer } from './ip-camera-viewer';
-import { CameraViewer } from './camera-viewer';
 import { authClient } from './operator-auth';
 
 export function CameraWorkspace({ operator }: { operator: { id: string; name: string } }) {
@@ -29,10 +28,16 @@ export function CameraWorkspace({ operator }: { operator: { id: string; name: st
     },
   });
 
-  function cameraAdded(camera: Camera) {
-    queryClient.setQueryData<Camera[]>(cameraKey, (previous = []) => [...previous, camera]);
+  function cameraAdded(camera: IpCamera) {
+    queryClient.setQueryData<IpCamera[]>(cameraKey, (previous = []) => [...previous, camera]);
     void queryClient.invalidateQueries({ queryKey: cameraKey });
     setSelectedId(camera.id);
+  }
+
+  function cameraRemoved(cameraId: string) {
+    queryClient.setQueryData<IpCamera[]>(cameraKey, (previous = []) => previous.filter(({ id }) => id !== cameraId));
+    setSelectedId((current) => current === cameraId ? undefined : current);
+    void queryClient.invalidateQueries({ queryKey: cameraKey });
   }
 
   return (
@@ -40,7 +45,7 @@ export function CameraWorkspace({ operator }: { operator: { id: string; name: st
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4 sm:mb-9">
         <div>
           <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Camera workspace</h2>
-          <p className="mt-2 text-slate-600">View live feeds, recordings, and replay clips.</p>
+          <p className="mt-2 text-slate-600">View live feeds and recordings.</p>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-3">
           <span className="min-w-0 break-all text-sm text-slate-600">{operator.name}</span>
@@ -79,13 +84,8 @@ export function CameraWorkspace({ operator }: { operator: { id: string; name: st
         </aside>
 
         {selected
-          ? 'kind' in selected
-            ? <IpCameraViewer key={selected.id} camera={selected} tenantId={operator.id} onRemoved={() => {
-                queryClient.setQueryData<Camera[]>(cameraKey, (previous = []) => previous.filter(({ id }) => id !== selected.id));
-                setSelectedId((current) => current === selected.id ? undefined : current);
-                void queryClient.invalidateQueries({ queryKey: cameraKey });
-              }} />
-            : <CameraViewer key={selected.id} camera={selected} tenantId={operator.id} />
+          ? <IpCameraViewer key={selected.id} camera={selected} tenantId={operator.id}
+              onRemoved={() => cameraRemoved(selected.id)} />
           : <Card className="grid min-h-60 place-content-center gap-2 px-6 text-center">
             <h3 className="text-lg font-semibold">Footage preview</h3>
             <p className="text-sm text-slate-600">
@@ -97,9 +97,8 @@ export function CameraWorkspace({ operator }: { operator: { id: string; name: st
   );
 }
 
-function AddCamera({ onAdded }: { onAdded: (camera: Camera) => void }) {
+function AddCamera({ onAdded }: { onAdded: (camera: IpCamera) => void }) {
   const [error, setError] = useState('');
-  const [kind, setKind] = useState<'clip' | 'ip'>('clip');
   const [pending, setPending] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -107,21 +106,13 @@ function AddCamera({ onAdded }: { onAdded: (camera: Camera) => void }) {
     const form = event.currentTarget;
     const values = new FormData(form);
     const name = String(values.get('name')).trim();
-    const clip = values.get('clip');
-    if (kind === 'clip' && (!(clip instanceof File) || !clip.size || clip.size > maxClipBytes)) {
-      setError(`Choose an MP4 clip up to ${maxClipMiB} MiB.`);
-      return;
-    }
-
     setError('');
     setPending(true);
     try {
-      const camera = kind === 'ip'
-        ? await cameraApi.connect({
-            name, url: String(values.get('url')),
-            username: String(values.get('username')), password: String(values.get('password')),
-          })
-        : await cameraApi.add(name, clip as File);
+      const camera = await cameraApi.connect({
+        name, url: String(values.get('url')),
+        username: String(values.get('username')), password: String(values.get('password')),
+      });
       form.reset();
       onAdded(camera);
     } catch (problem) {
@@ -140,43 +131,26 @@ function AddCamera({ onAdded }: { onAdded: (camera: Camera) => void }) {
       <form className="grid gap-4 p-5" onSubmit={submit}>
         <h3 className="font-semibold">Add a camera</h3>
         <div className="field">
-          <Label htmlFor="camera-source">Camera source</Label>
-          <select id="camera-source" value={kind} disabled={pending}
-            className="border-input bg-background h-9 rounded-md border px-3 text-sm"
-            onChange={(event) => { setKind(event.target.value === 'ip' ? 'ip' : 'clip'); setError(''); }}>
-            <option value="clip">Synthetic Camera</option>
-            <option value="ip">IP camera</option>
-          </select>
-        </div>
-        <div className="field">
           <Label htmlFor="camera-name">Camera name</Label>
           <Input id="camera-name" name="name" required maxLength={maxCameraNameLength}
             placeholder="Rack-side aisle" disabled={pending} />
         </div>
-        {kind === 'ip' ? <>
-          <div className="field">
-            <Label htmlFor="camera-url">RTSP stream URL</Label>
-            <Input id="camera-url" name="url" type="url" placeholder="rtsp://192.0.2.10:554/stream"
-              required maxLength={maxCameraStreamUrlLength} disabled={pending} />
-          </div>
-          <div className="field">
-            <Label htmlFor="camera-username">Camera username (optional)</Label>
-            <Input id="camera-username" name="username" autoComplete="off" maxLength={256} disabled={pending} />
-          </div>
-          <div className="field">
-            <Label htmlFor="camera-password">Camera password (optional)</Label>
-            <Input id="camera-password" name="password" type="password" autoComplete="off" maxLength={256} disabled={pending} />
-          </div>
-        </> : <div className="field">
-          <Label htmlFor="camera-clip">MP4 clip</Label>
-          <Input id="camera-clip" type="file" name="clip" accept=".mp4,video/mp4" required
-            disabled={pending} aria-describedby="clip-format" />
-          <p id="clip-format" className="text-xs text-slate-600">H.264 video, up to {maxClipMiB} MiB.</p>
-        </div>}
+        <div className="field">
+          <Label htmlFor="camera-url">RTSP stream URL</Label>
+          <Input id="camera-url" name="url" type="url" placeholder="rtsp://192.0.2.10:554/stream"
+            required maxLength={maxCameraStreamUrlLength} disabled={pending} />
+        </div>
+        <div className="field">
+          <Label htmlFor="camera-username">Camera username (optional)</Label>
+          <Input id="camera-username" name="username" autoComplete="off" maxLength={256} disabled={pending} />
+        </div>
+        <div className="field">
+          <Label htmlFor="camera-password">Camera password (optional)</Label>
+          <Input id="camera-password" name="password" type="password" autoComplete="off" maxLength={256} disabled={pending} />
+        </div>
         {error && <p className="error" role="alert">{error}</p>}
         <Button type="submit" className="whitespace-normal" disabled={pending}>
-          {kind === 'ip' ? (pending ? 'Adding camera…' : 'Connect IP camera')
-            : (pending ? 'Uploading and checking clip…' : 'Add Synthetic Camera')}
+          {pending ? 'Adding camera…' : 'Connect IP camera'}
         </Button>
       </form>
     </Card>

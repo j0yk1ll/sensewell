@@ -1,0 +1,2 @@
+CREATE POLICY "ip_camera_insert" ON "cameras" AS RESTRICTIVE FOR INSERT TO "sensewell_app" WITH CHECK ("cameras"."encrypted_stream" is not null);--> statement-breakpoint
+ALTER POLICY "camera_removal" ON "cameras" TO sensewell_app USING ("cameras"."encrypted_stream" is not null) WITH CHECK ("cameras"."removed_at" is not null and "cameras"."encrypted_stream" is null);

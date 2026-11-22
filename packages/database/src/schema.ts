@@ -81,14 +81,18 @@ export const cameras = pgTable('cameras', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (camera) => [
   tenantIsolation(camera.tenantId),
-  pgPolicy('ip_camera_removal', {
+  pgPolicy('ip_camera_insert', {
+    as: 'restrictive', for: 'insert', to: applicationRole,
+    withCheck: sql`${camera.encryptedStream} is not null`,
+  }),
+  pgPolicy('camera_removal', {
     as: 'restrictive', for: 'update', to: applicationRole,
     using: sql`${camera.encryptedStream} is not null`,
     withCheck: sql`${camera.removedAt} is not null and ${camera.encryptedStream} is null`,
   }),
   unique('synthetic_cameras_tenant_id_id_unique').on(camera.tenantId, camera.id),
   check('camera_source', sql`
-    (${camera.encryptedStream} is null and ${camera.removedAt} is null
+    (${camera.encryptedStream} is null
       and ${camera.durationMs} is not null and ${camera.startOffsetMs} is not null)
     or ((${camera.encryptedStream} is not null) <> (${camera.removedAt} is not null)
       and ${camera.durationMs} is null and ${camera.startOffsetMs} is null)

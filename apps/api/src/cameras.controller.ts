@@ -3,19 +3,14 @@ import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import {
   BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, NotFoundException,
-  Param, ParseUUIDPipe, PayloadTooLargeException, Post, Put, Query, Req, Res,
-  ServiceUnavailableException, UnsupportedMediaTypeException,
+  Param, ParseUUIDPipe, Post, Put, Req, Res, ServiceUnavailableException,
 } from '@nestjs/common';
-import { activityChatInput, calibratedZoneInput, cameraName, cameraZoneInput, ipCameraInput, maxCameraNameLength, maxClipBytes, maxClipMiB, replayGroupOptions, replayOptions, zoneEntryRuleInput, zoneEntryRuleToggle } from '@sensewell/contracts';
+import { calibratedZoneInput, cameraZoneInput, ipCameraInput, type IpCamera } from '@sensewell/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AuthService } from './auth.js';
-import { ClipStorage, evidenceWindow } from './clip-storage.js';
 import { DatabaseService } from './database.service.js';
 import { IpCameraService } from './ip-camera.service.js';
 import { cameraStream, encryptStream } from './ip-camera-source.js';
-import { ReplayService } from './replay.service.js';
-import { summarizeZoneActivity } from './zone-activity.js';
-import { ActivityChatService } from './activity-chat.service.js';
 
 const privateFootageHeaders = {
   'Cache-Control': 'private, no-store',
@@ -44,30 +39,20 @@ function parseZone(body: unknown) {
   return calibrated;
 }
 
-function parseRule(body: unknown) {
-  const input = zoneEntryRuleInput.safeParse(body);
-  if (!input.success) throw new BadRequestException('Choose a saved zone, a rule name, at least one supported object type, and a minimum confidence from 0 to 100%.');
-  return input.data;
-}
-
 @Controller('api/cameras')
 export class CamerasController {
   constructor(
     private readonly auth: AuthService,
     private readonly database: DatabaseService,
-    private readonly clips: ClipStorage,
-    private readonly replay: ReplayService,
     private readonly ipCameras: IpCameraService,
-    private readonly chat: ActivityChatService,
   ) {}
 
   @Get()
   @Header('Cache-Control', 'private, no-store')
-  async list(@Req() request: FastifyRequest) {
+  async list(@Req() request: FastifyRequest): Promise<IpCamera[]> {
     const tenantId = await this.auth.requireTenant(request);
     const cameras = await this.database.cameras.list(tenantId);
-    return cameras.map(({ id, name, durationMs }) =>
-      durationMs === null ? { id, name, kind: 'ip' as const } : { id, name, durationMs });
+    return cameras.map(({ id, name }) => ({ id, name, kind: 'ip' }));
   }
 
   @Post('ip')
@@ -94,20 +79,20 @@ export class CamerasController {
   @HttpCode(204)
   async remove(@Param('id', ParseUUIDPipe) id: string, @Req() request: FastifyRequest) {
     const tenantId = await this.auth.requireTenant(request);
-    if (!await this.database.cameras.removeIp(tenantId, id)) throw new NotFoundException('IP camera not found.');
+    if (!await this.database.cameras.removeIp(tenantId, id)) throw new NotFoundException('Camera not found.');
     await this.ipCameras.stop(id);
   }
 
   @Get(':id/capture')
   @Header('Cache-Control', 'private, no-store')
   async captureStatus(@Param('id', ParseUUIDPipe) id: string, @Req() request: FastifyRequest) {
-    await this.requireIpCamera(request, id);
+    await this.requireCamera(request, id);
     return this.ipCameras.status(id);
   }
 
   @Get(':id/capture/video')
   async liveVideo(@Param('id', ParseUUIDPipe) id: string, @Req() request: FastifyRequest, @Res() reply: FastifyReply) {
-    await this.requireIpCamera(request, id);
+    await this.requireCamera(request, id);
     if (this.ipCameras.status(id).state !== 'connected') throw new ServiceUnavailableException('Camera feed is unavailable.');
     return this.sendFootage(reply, (signal) => this.ipCameras.video(id, signal));
   }
@@ -115,7 +100,7 @@ export class CamerasController {
   @Get(':id/recordings')
   @Header('Cache-Control', 'private, no-store')
   async recordings(@Param('id', ParseUUIDPipe) id: string, @Req() request: FastifyRequest) {
-    const tenantId = await this.requireIpCamera(request, id);
+    const { tenantId } = await this.requireCamera(request, id);
     return this.database.recordings.list(tenantId, id);
   }
 
@@ -126,35 +111,11 @@ export class CamerasController {
     @Req() request: FastifyRequest,
     @Res() reply: FastifyReply,
   ) {
-    const tenantId = await this.requireIpCamera(request, id);
+    const { tenantId } = await this.requireCamera(request, id);
     if (!await this.database.recordings.find(tenantId, id, recordingId)) {
       throw new NotFoundException('Recording not found.');
     }
     return this.sendMp4(await this.ipCameras.open(id, recordingId), request, reply);
-  }
-
-  @Post()
-  async add(@Req() request: FastifyRequest, @Query('name') input: unknown) {
-    const tenantId = await this.auth.requireTenant(request);
-    const name = cameraName.safeParse(input);
-    if (!name.success) throw new BadRequestException(`Enter a camera name up to ${maxCameraNameLength} characters.`);
-    if (!(request.body instanceof Readable)) {
-      throw new UnsupportedMediaTypeException('Send the clip as application/octet-stream.');
-    }
-    if (Number(request.headers['content-length']) > maxClipBytes) {
-      throw new PayloadTooLargeException(`Choose a clip up to ${maxClipMiB} MiB.`);
-    }
-
-    const id = randomUUID();
-    const timeline = await this.clips.save(id, request.body);
-    const camera = { id, name: name.data, durationMs: timeline.durationMs };
-    try {
-      await this.database.cameras.add(tenantId, { ...camera, startOffsetMs: timeline.startOffsetMs });
-    } catch (error) {
-      await this.clips.discard(id);
-      throw error;
-    }
-    return camera;
   }
 
   @Get(':id/zones')
@@ -203,162 +164,6 @@ export class CamerasController {
     }
   }
 
-  @Get(':id/zone-entry-rules')
-  @Header('Cache-Control', 'private, no-store')
-  async listZoneEntryRules(@Param('id', ParseUUIDPipe) id: string, @Req() request: FastifyRequest) {
-    const { tenantId } = await this.requireSyntheticCamera(request, id);
-    return this.database.zoneEntryRules.list(tenantId, id);
-  }
-
-  @Post(':id/zone-entry-rules')
-  @Header('Cache-Control', 'private, no-store')
-  async addZoneEntryRule(
-    @Param('id', ParseUUIDPipe) id: string, @Req() request: FastifyRequest, @Body() body: unknown,
-  ) {
-    const { tenantId } = await this.requireSyntheticCamera(request, id);
-    const rule = await this.database.zoneEntryRules.add(tenantId, id, parseRule(body));
-    if (!rule) throw new NotFoundException('Camera zone not found.');
-    return rule;
-  }
-
-  @Put(':id/zone-entry-rules/:ruleId')
-  @Header('Cache-Control', 'private, no-store')
-  async updateZoneEntryRule(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('ruleId', ParseUUIDPipe) ruleId: string,
-    @Req() request: FastifyRequest,
-    @Body() body: unknown,
-  ) {
-    const { tenantId } = await this.requireSyntheticCamera(request, id);
-    const rule = await this.database.zoneEntryRules.update(tenantId, id, ruleId, parseRule(body));
-    if (!rule) throw new NotFoundException('Rule or saved zone not found.');
-    return rule;
-  }
-
-  @Delete(':id/zone-entry-rules/:ruleId')
-  @HttpCode(204)
-  @Header('Cache-Control', 'private, no-store')
-  async removeZoneEntryRule(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('ruleId', ParseUUIDPipe) ruleId: string,
-    @Req() request: FastifyRequest,
-  ) {
-    const { tenantId } = await this.requireSyntheticCamera(request, id);
-    if (!await this.database.zoneEntryRules.remove(tenantId, id, ruleId)) {
-      throw new NotFoundException('Rule not found.');
-    }
-  }
-
-  @Put(':id/zone-entry-rules/:ruleId/enabled')
-  @Header('Cache-Control', 'private, no-store')
-  async setZoneEntryRuleEnabled(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('ruleId', ParseUUIDPipe) ruleId: string,
-    @Req() request: FastifyRequest,
-    @Body() body: unknown,
-  ) {
-    const { tenantId } = await this.requireSyntheticCamera(request, id);
-    const input = zoneEntryRuleToggle.safeParse(body);
-    if (!input.success) throw new BadRequestException('Specify whether the rule is enabled.');
-    const rule = await this.database.zoneEntryRules.setEnabled(tenantId, id, ruleId, input.data.enabled);
-    if (!rule) throw new NotFoundException('Zone-entry rule not found.');
-    return rule;
-  }
-
-  @Post(':id/activity-chat')
-  @HttpCode(200)
-  @Header('Cache-Control', 'private, no-store')
-  async activityChat(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Req() request: FastifyRequest,
-    @Body() body: unknown,
-  ) {
-    const { tenantId } = await this.requireSyntheticCamera(request, id);
-    const input = activityChatInput.safeParse(body);
-    if (!input.success) throw new BadRequestException('Enter a question about the recorded activity.');
-    return this.chat.ask(tenantId, id, input.data);
-  }
-
-  @Get(':id/zone-activity')
-  @Header('Cache-Control', 'private, no-store')
-  async zoneActivityPasses(@Param('id', ParseUUIDPipe) id: string, @Req() request: FastifyRequest) {
-    const { tenantId } = await this.requireSyntheticCamera(request, id);
-    return this.database.zoneActivity.passes(tenantId, id);
-  }
-
-  @Get(':id/zone-activity/:passId')
-  @Header('Cache-Control', 'private, no-store')
-  async zoneActivity(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('passId', ParseUUIDPipe) passId: string,
-    @Query('atMs') at: string | undefined,
-    @Req() request: FastifyRequest,
-  ) {
-    const { camera, tenantId } = await this.requireSyntheticCamera(request, id);
-    const atMs = at === undefined ? undefined : Number(at);
-    if (atMs !== undefined && (!/^\d+$/.test(String(at)) || !Number.isSafeInteger(atMs) || atMs > camera.durationMs)) {
-      throw new BadRequestException('Choose an occupancy time within the source clip.');
-    }
-    const active = this.replay.isPassActive(id, passId);
-    const frames = await this.database.zoneActivity.frames(tenantId, id, passId);
-    if (!frames) throw new NotFoundException('Replay pass not found.');
-    return summarizeZoneActivity(passId, frames, active, atMs);
-  }
-
-  @Get(':id/zone-entry-events')
-  @Header('Cache-Control', 'private, no-store')
-  async zoneEntryHistory(@Param('id', ParseUUIDPipe) id: string, @Req() request: FastifyRequest) {
-    const { tenantId } = await this.requireSyntheticCamera(request, id);
-    return this.database.zoneEntries.history(tenantId, id);
-  }
-
-  @Get(':id/zone-entry-events/:eventId')
-  @Header('Cache-Control', 'private, no-store')
-  async zoneEntryEvidence(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('eventId', ParseUUIDPipe) eventId: string,
-    @Req() request: FastifyRequest,
-  ) {
-    const { evidence, window } = await this.requireEventEvidence(request, id, eventId);
-    return { ...evidence, window };
-  }
-
-  @Get(':id/zone-entry-events/:eventId/clip')
-  async zoneEntryClip(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('eventId', ParseUUIDPipe) eventId: string,
-    @Req() request: FastifyRequest,
-    @Res() reply: FastifyReply,
-  ) {
-    const abort = new AbortController();
-    const cancel = () => abort.abort();
-    reply.raw.once('close', cancel);
-    try {
-      const { window } = await this.requireEventEvidence(request, id, eventId);
-      const clip = await this.clips.evidenceClip(id, window, abort.signal);
-      return reply.headers(privateFootageHeaders).type('video/mp4').send(clip);
-    } finally {
-      reply.raw.off('close', cancel);
-    }
-  }
-
-  private async requireEventEvidence(request: FastifyRequest, id: string, eventId: string) {
-    const { camera, tenantId } = await this.requireSyntheticCamera(request, id);
-    const evidence = await this.database.zoneEntries.evidence(tenantId, id, eventId);
-    if (!evidence?.jpeg) throw new NotFoundException('Event evidence not found.');
-    return { evidence, window: evidenceWindow(evidence.sourceMs, camera) };
-  }
-
-  @Get(':id/media')
-  async media(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Req() request: FastifyRequest,
-    @Res() reply: FastifyReply,
-  ) {
-    await this.requireSyntheticCamera(request, id);
-    return this.sendMp4(await this.clips.open(id), request, reply);
-  }
-
   private async sendMp4(file: FileHandle, request: FastifyRequest, reply: FastifyReply) {
     try {
       const { size } = await file.stat();
@@ -386,94 +191,15 @@ export class CamerasController {
     }
   }
 
-  @Get(':id/replay')
-  @Header('Cache-Control', 'private, no-store')
-  async status(@Param('id', ParseUUIDPipe) id: string, @Req() request: FastifyRequest) {
-    await this.requireSyntheticCamera(request, id);
-    return this.replay.status(id);
-  }
-
-  @Post(':id/replay')
-  @HttpCode(202)
-  async start(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Req() request: FastifyRequest,
-    @Body() body: unknown,
-  ) {
-    const { camera, tenantId } = await this.requireSyntheticCamera(request, id);
-    const options = replayOptions.safeParse(body);
-    if (!options.success) throw new BadRequestException('Specify whether replay should loop.');
-    const clip = await this.clips.open(id);
-    await clip.close();
-    return this.replay.start(tenantId, camera, options.data.loop);
-  }
-
-  @Delete(':id/replay')
-  async stop(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Query('passId', new ParseUUIDPipe({ optional: true })) passId: string | undefined,
-    @Req() request: FastifyRequest,
-  ) {
-    await this.requireSyntheticCamera(request, id);
-    return this.replay.stop(id, passId);
-  }
-
-  @Post('replay-group')
-  @HttpCode(202)
-  async startGroup(@Req() request: FastifyRequest, @Body() body: unknown) {
-    const tenantId = await this.auth.requireTenant(request);
-    const options = replayGroupOptions.safeParse(body);
-    if (!options.success) throw new BadRequestException('Choose three distinct cameras and valid replay timing.');
-    const tracks = await Promise.all(options.data.tracks.map(async ({ cameraId, ...timing }) => {
-      const camera = await this.database.cameras.find(tenantId, cameraId);
-      if (!camera || camera.durationMs === null || camera.startOffsetMs === null) {
-        throw new NotFoundException('Synthetic Camera not found.');
-      }
-      const clip = await this.clips.open(cameraId);
-      await clip.close();
-      return { ...timing, camera: { ...camera, durationMs: camera.durationMs, startOffsetMs: camera.startOffsetMs } };
-    }));
-    return this.replay.startGroup(tenantId, tracks, options.data.bufferMs);
-  }
-
-  @Get(':id/replay/video')
-  async video(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Req() request: FastifyRequest,
-    @Res() reply: FastifyReply,
-  ) {
-    await this.requireReplayFootage(request, id);
-    return this.sendFootage(reply, (signal) => this.replay.video(id, signal));
-  }
-
-  @Get(':id/replay/frames')
-  async replayImages(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Req() request: FastifyRequest,
-    @Res() reply: FastifyReply,
-  ) {
-    await this.requireReplayFootage(request, id);
-    return this.sendFootage(reply, (signal) => this.replay.images(id, signal), 'application/x-ndjson');
-  }
-
-  private async requireReplayFootage(request: FastifyRequest, id: string) {
-    await this.requireSyntheticCamera(request, id);
-    const state = this.replay.status(id).state;
-    if (state !== 'starting' && state !== 'running' && state !== 'finished') {
-      throw new ServiceUnavailableException('Replay footage is unavailable.');
-    }
-  }
-
   private sendFootage(
     reply: FastifyReply,
     stream: (signal: AbortSignal) => AsyncIterable<Buffer | string>,
-    contentType = 'multipart/x-mixed-replace; boundary=frame',
   ) {
     const abort = new AbortController();
     reply.raw.once('close', () => abort.abort());
     return reply
       .headers(privateFootageHeaders)
-      .type(contentType)
+      .type('multipart/x-mixed-replace; boundary=frame')
       .send(Readable.from(stream(abort.signal)));
   }
 
@@ -482,18 +208,5 @@ export class CamerasController {
     const camera = await this.database.cameras.find(tenantId, id);
     if (!camera) throw new NotFoundException('Camera not found.');
     return { tenantId, camera };
-  }
-
-  private async requireSyntheticCamera(request: FastifyRequest, id: string) {
-    const { tenantId, camera } = await this.requireCamera(request, id);
-    const { durationMs, startOffsetMs } = camera;
-    if (durationMs === null || startOffsetMs === null) throw new NotFoundException('Synthetic Camera not found.');
-    return { tenantId, camera: { ...camera, durationMs, startOffsetMs } };
-  }
-
-  private async requireIpCamera(request: FastifyRequest, id: string) {
-    const { tenantId, camera } = await this.requireCamera(request, id);
-    if (camera.durationMs !== null) throw new NotFoundException('IP camera not found.');
-    return tenantId;
   }
 }

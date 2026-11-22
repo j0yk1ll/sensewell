@@ -4,7 +4,7 @@ import { mkdtemp, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
-import { jpegFrames } from './replay-source.js';
+import { jpegFrames } from './jpeg-stream.js';
 
 interface RecordedSegment {
   path: string;

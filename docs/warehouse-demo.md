@@ -82,46 +82,15 @@ Compare these zero-based frames in the `transfer` clips. The manifest uses `F1` 
 | 00:18 | 180 | Dispatch | F1 finishes lowering P1. Matches `groundTruth.deliveryMs` (18000). |
 | 00:23 | 230 | Dispatch | P1 stays on the floor after F1 backs away. |
 
-## Import and replay through Sensewell
-
-Start Sensewell and its detector using the [local setup](../README.md). Create an account in the app first. The presenter script needs Node.js 24 and signs in with that account. Set `SENSEWELL_URL` if the app uses a different origin.
-
-```sh
-export SENSEWELL_EMAIL=you@example.com
-read -rs -p 'Sensewell password: ' SENSEWELL_PASSWORD
-export SENSEWELL_PASSWORD
-
-node scripts/warehouse-demo/replay.mjs import warehouse-fixtures/transfer
-node scripts/warehouse-demo/replay.mjs play warehouse-fixtures/transfer
-```
-
-Import uploads the clips as Synthetic Cameras, saves calibrated floor zones whose four corners are fully visible, and writes the camera IDs into `replay-cameras.json` beside the fixture manifest. To use regenerated footage, render into a fresh directory and import it there. Repeat the same commands with another fixture directory to switch scenarios.
-
-One `play` starts all three cameras on the same source clock with a 2.5-second analysis buffer. It prints the run and pass IDs, followed by per-camera source time, most recent analyzed source time, displayed-frame analysis status, and analyzed-frame count. Open the three imported Synthetic Cameras in separate visible browser windows to watch the running views and detection overlays together. Use Ctrl+C to stop all three, or run `stop` with the same fixture directory and profile from another terminal.
-
-## Exercise the analysis buffer
-
-The fault profiles use a 30-second analysis buffer. The delay profile holds back the aisle input to the detector by 42 seconds and plays it at 1× when it arrives. Staging and dispatch continue to publish on their original schedule. The first delayed bridge frame, source 00:09, is scheduled for publication at about 00:53.500 elapsed. Its occurrence time stays tied to source 00:09. At about 00:48.500 elapsed the pickup and delivery views are available while the aisle bridge is still pending.
-
-```sh
-node scripts/warehouse-demo/replay.mjs import warehouse-fixtures/supported-handoff
-node scripts/warehouse-demo/replay.mjs play warehouse-fixtures/supported-handoff delay
-
-node scripts/warehouse-demo/replay.mjs import warehouse-fixtures/supported-handoff outage
-node scripts/warehouse-demo/replay.mjs play warehouse-fixtures/supported-handoff outage
-```
-
-The outage profile selects the identically choreographed `ambiguous-handoff` footage. It marks aisle frames in `[9000, 18000)` milliseconds unavailable and creates no detector observations for them. Staging and dispatch continue across the same timestamps. The delay profile supplies late aisle evidence for revising an initially undecided handoff. The outage leaves the question undecided. The manifests specify these expected conclusions for use when implementing and testing finding revision. [Finding revision issue](https://github.com/j0yk1ll/sensewell/issues/30)
-
 ## Inspect and score the fixtures
 
-Each scenario directory has a `manifest.json` with camera IDs and files, the shared frame rate and duration, floor-plan zones, fixture-only identities, event times, evidence windows, and coverage gaps. Reference annotations are for comparison with footage-derived results. The replay script sends recordings, calibration landmarks and floor zones, and fault timing to Sensewell. See the [ground-position benchmark](warehouse-ground-position.md) for setup, annotations, and results.
+Each scenario directory has a `manifest.json` with camera IDs and files, the shared frame rate and duration, floor-plan zones, fixture-only identities, event times, evidence windows, and coverage gaps. Reference annotations are for comparison with footage-derived results. See the [ground-position benchmark](warehouse-ground-position.md) for setup, annotations, and results.
 
 - Floor points are in meters on Blender’s ground plane, with +X running from staging toward dispatch and +Y toward the racks. Each zone is a rectangle `[minX, minY, maxX, maxY]`. Each camera’s row-major `floorToImage` matrix multiplies `[X, Y, 1]`. Divide its first two outputs by the third to get normalized image coordinates from the top-left corner.
 - Choreography entries give `[second, [X, Y, liftHeight]]` for each forklift. Interpolate linearly between entries. The F1 and P1 times in `groundTruth` apply across all views. For dwell, 05:04 is the exact five-minute boundary, so a strictly-greater rule can first qualify on the following 10 fps frame at 05:04.100.
 - Compare the footage-derived result with `expected`, keeping camera and source times together. An unavailable interval carries missing coverage. A processed frame can also have zero detections. Real detector output depends on the model and available inference throughput.
 - Use `ffprobe` to check stream timing. From the `transfer` directory, extract the staging and aisle frames at 00:09 with `ffmpeg -ss 9 -i staging.mp4 -frames:v 1 staging-9s.png` and `ffmpeg -ss 9 -i aisle.mp4 -frames:v 1 aisle-9s.png`.
 
-## Local verification
+## Historical replay results
 
 The 24-second transfer produced 35 saved detector observations on each camera, about 4.4 analyzed frames per second across the group, with a display lag of about 2.5 seconds. In the delay run, staging and dispatch stayed near 30 seconds of display lag and the aisle delivered 30 analyzed frames at source times in the handoff interval, roughly 44.5 seconds after occurrence. In the outage run, the aisle recorded zero observations during that interval and the other views recorded 17 each. The detector found forklifts in all three views and produced zero pallet classifications in these runs.

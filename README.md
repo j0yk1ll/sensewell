@@ -2,7 +2,7 @@
 
 ## Run locally
 
-Install Docker with the Compose v2 plugin. Place the trained RF-DETR Small export at `models/warehouse_detector.onnx` to enable object detection. For calibrated person zones, also install the [pose model and floor-plan configuration](docs/warehouse-ground-position.md). Start the stack with:
+Install Docker with the Compose v2 plugin and start the stack with:
 
 ```sh
 docker compose up --build
@@ -15,48 +15,18 @@ curl --fail http://localhost:3000/api/health
 # {"status":"ready"}
 ```
 
-Compose starts PostgreSQL and the detector service, applies the Drizzle migrations, then starts the app. Replay can show source footage while the detector is unavailable. The migration job exits successfully after applying pending migrations. PostgreSQL data, uploaded clips, and IP camera recordings persist in the `postgres-data`, `camera-clips`, and `camera-recordings` volumes. Use `docker compose down` to stop the stack. Add any new runtime dependencies to `compose.yaml` as part of the slice that introduces them.
-
-## Add and replay a Synthetic Camera
-
-1. Create an operator account and sign in. Each account has its own camera workspace.
-2. Enter a camera name and upload an H.264 MP4 clip up to 512 MiB. Select the camera to reopen its source preview, then scrub the preview timeline to inspect a frame.
-3. Choose **Draw zone**, place the corners of the area on the preview, enter a name, and choose **Save zone**. You can save multiple zones. Use **Edit** beside a zone to rename it or redraw its outline, or **Remove** to delete that zone.
-4. Under **Zone rules**, choose the saved zone, enter a rule name, choose the object types and event type, set the minimum detection confidence, and choose **Create rule**. Choose **Enable rule** to record confirmed entries and exits during replay. Use **Edit** to change the rule’s name, saved zone, object types, event type, or confidence. **Remove** stops the rule and keeps its past events in history.
-5. Select **Loop replay** if needed, then choose **Start replay**. Replay shows the source position, pass number, object detections with confidence scores, and how many frames in that pass have been analyzed. Use **Show object detections** to toggle the overlay. **Stop replay** returns to the source preview.
-6. Each press of **Start replay** clears **Event history** for that camera. With **Loop replay** enabled, automatic passes add to the same history until you start a fresh replay. Under **Event history**, choose **Open evidence** to inspect the original replay pass, the analyzed entry or exit frame with its confidence, and the source clip at the event timestamp. The player opens at the beginning of the evidence clip and shows up to three seconds of footage on either side of the crossing.
-
-See the [Warehouse replay walkthrough](docs/warehouse-zone-entry.md) for the annotated crossing and timing results.
-
-The [three-camera Blender demo](docs/warehouse-demo.md) includes synchronized fixture generation, scoring references, and replay with repeatable delay and outage profiles.
-
-FFmpeg decodes up to 10 replay frames per second at 1× source speed. Each pass has a persistent ID tied to the source camera. The CPU detector records supported Warehouse object detections at or above 25% confidence, using normalized box coordinates and source timestamps. An analyzed frame with zero detections is recorded as an empty observation. Replay uses a 650 ms display buffer and reports missing or delayed analysis per frame so playback can continue when inference falls behind. Active playback runs in the app process and stops when that process exits.
+Compose starts PostgreSQL, applies the Drizzle migrations, and starts the app. PostgreSQL data and IP camera recordings persist in the `postgres-data` and `camera-recordings` volumes. Use `docker compose down` to stop the stack.
 
 The Compose secret and origins are for local use. Set `BETTER_AUTH_SECRET` to a random secret (at least 32 characters) and `BETTER_AUTH_URL` to the browser-facing HTTPS URL for a deployment.
 
-## Investigate recorded activity
-
-To use a self-hosted llama.cpp server, set the following in the Compose `.env` file or the API process environment.
-
-```dotenv
-LLAMA_CPP_CHAT_URL=http://jetson.local:8000/v1/chat/completions
-LLAMA_CPP_MODEL=unsloth/gemma-4-E2B-it-GGUF:Q4_K_S
-```
-
-The server must support native tool calls. If the app container cannot resolve a `.local` hostname, put the Jetson's LAN IP address in the URL. When configured, llama.cpp handles the full conversation, including evidence tool results, over the supplied URL. Run `docker compose up -d --build app` to apply the configuration.
-
-For hosted chat, leave `LLAMA_CPP_CHAT_URL` unset. Set `OPENROUTER_API_KEY` in your environment or local Compose `.env` before starting the app. Get a key from [OpenRouter](https://openrouter.ai/settings/keys). The API defaults to [Gemma 4 26B A4B (free)](https://openrouter.ai/google/gemma-4-26b-a4b-it:free). To override it, set `OPENROUTER_MODEL` to an OpenRouter model ID with tool calling support. The app makes the OpenRouter requests over HTTPS. A chat question usually makes at least two model requests, one to select the evidence query and one to answer. The free model is subject to OpenRouter quota and provider capacity limits.
-
-After a Synthetic Camera has started collecting observations, choose a pass under **Zone activity** and enter a question under **Investigate footage**. For example, “How many people entered the rack-side zone between 0:20 and 0:55 at 35% confidence? Include possible crossings and show me the evidence.” Ask for occupancy at a clip time or for complete visit durations in a range. Open a supporting timestamp to view the source clip at that time. The answer identifies the replay pass and shows the analysis cutoff and incomplete coverage when applicable.
-
-Chat evaluates recorded detections against the current saved zones using the requested confidence cutoff, or 50% by default. Results leave saved rules and event history intact. A lower cutoff only uses detections that the detector originally recorded. Confirmed and possible crossings are reported separately, and distinct entrants are estimates based on tracks within a pass. The configured model server receives the question, recent questions for follow-ups, authorized replay context, and the text results of evidence queries. Source video and still frames stay within Sensewell.
+On upgrade, legacy clip cameras are hidden from the workspace. Existing database evidence and uploaded clip files stay in storage, including any existing `camera-clips` volume.
 
 ## Connect and record an IP camera
 
 The optional [warehouse simulator](docs/warehouse-demo.md#run-the-warehouse-as-ip-cameras) provides three local RTSP feeds for this workflow.
 
 1. Sign in. A camera endpoint administrator can open **Camera endpoints** and approve a hostname, IP address, or RTSP URL. Approvals are saved by host and port, with 554 as the default. For the public Sarine Valley webcam, paste `rtsp://rtsp.143b.ch:554/stream`.
-2. Select **IP camera** under **Camera source**. Enter a name, the `rtsp://` stream URL, and any credentials in the separate fields. Choose **Connect IP camera**.
+2. Under **Add a camera**, enter a name, the `rtsp://` stream URL, and any credentials in the separate fields. Choose **Connect IP camera**.
 3. Capture starts automatically. When the feed is interrupted the workspace reports it as unavailable and retries in the background. Capture also resumes after an app restart. Keep `BETTER_AUTH_SECRET` stable across restarts so saved camera settings can be decrypted.
 4. Open a time range in **Recorded footage**. Completed MP4 segments become playable as they are recorded. The timeline shows outages between segments as **Footage unavailable**, and playback stops at a gap.
 5. Choose **Remove camera** and confirm to stop capture and remove the camera from the workspace.
@@ -77,9 +47,7 @@ The initial input is RTSP over TCP. The app records video as browser-playable H.
 
 Use Node.js 24 and the pnpm version in `package.json`. Run `corepack enable` to activate that version and `pnpm install --frozen-lockfile` to install workspace dependencies. `pnpm lint`, `pnpm typecheck`, and `pnpm build` run from the repository root.
 
-Install `ffmpeg` and `ffprobe` on your PATH. With a migrated PostgreSQL instance, set `DATABASE_URL` for the `sensewell_app` role, set `BETTER_AUTH_SECRET` to a local secret of at least 32 characters, and set `BETTER_AUTH_URL=http://localhost:5173`. Run `pnpm dev` to start both apps. Set `CLIP_STORAGE_DIR` to choose a private clip directory. By default the API stores clips in `.sensewell-clips` in its working directory. Vite serves the web app on port 5173 and proxies API requests to NestJS on port 3000. To run either app on its own, run `pnpm build` once to build the shared packages, then run `pnpm --filter @sensewell/web dev` or `pnpm --filter @sensewell/api dev`. The web app expects an API on port 3000 for the status check.
-
-For replay analysis outside Compose, run `apps/detector/server.py` with Python 3.12 and the packages in `apps/detector/requirements.txt`. Set `WAREHOUSE_MODEL_PATH` to the model file and `REPLAY_DETECTOR_URL=tcp://127.0.0.1:8000` for the API. The detector is intended for private access by the API.
+Install `ffmpeg` and `ffprobe` on your PATH. With a migrated PostgreSQL instance, set `DATABASE_URL` for the `sensewell_app` role, set `BETTER_AUTH_SECRET` to a local secret of at least 32 characters, and set `BETTER_AUTH_URL=http://localhost:5173`. Run `pnpm dev` to start both apps. Vite serves the web app on port 5173 and proxies API requests to NestJS on port 3000. To run either app on its own, run `pnpm build` once to build the shared packages, then run `pnpm --filter @sensewell/web dev` or `pnpm --filter @sensewell/api dev`. The web app expects an API on port 3000 for the status check.
 
 The web workspace uses React, Vite, Tailwind CSS, shadcn/ui, TanStack Router, TanStack Query, and shared Zod response contracts. Shared UI components live in `apps/web/src/components/ui` and use the theme in `apps/web/src/styles.css`. Better Auth handles operator accounts and sessions.
 

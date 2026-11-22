@@ -27,15 +27,6 @@ services:
       db:
         condition: service_healthy
 
-  detector:
-    build: ./apps/detector
-    init: true
-    environment:
-      DETECTOR_HOST: 0.0.0.0
-    volumes:
-      - ./models:/models:ro,Z
-    networks: [inference]
-
   app:
     image: *app-image
     build: .
@@ -44,20 +35,12 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-local-compose-only-e6c3b5894fc47c631b7b282d47fcb37e}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       BETTER_AUTH_TRUSTED_ORIGINS: ${BETTER_AUTH_TRUSTED_ORIGINS:-http://127.0.0.1:3000}
-      CLIP_STORAGE_DIR: /app/clips
       RECORDING_STORAGE_DIR: /app/recordings
-      REPLAY_DETECTOR_URL: tcp://detector:8000
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
-      LLAMA_CPP_CHAT_URL: ${LLAMA_CPP_CHAT_URL:-}
-      LLAMA_CPP_MODEL: ${LLAMA_CPP_MODEL:-}
     volumes:
-      - camera-clips:/app/clips
       - camera-recordings:/app/recordings
     depends_on:
       migrate:
         condition: service_completed_successfully
-    networks: [default, inference]
     ports:
       - "127.0.0.1:${SENSEWELL_PORT:-3000}:3000"
     healthcheck:
@@ -68,10 +51,4 @@ services:
 
 volumes:
   postgres-data:
-  camera-clips:
   camera-recordings:
-
-networks:
-  default: {}
-  inference:
-    internal: true

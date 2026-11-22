@@ -7,7 +7,7 @@ import { streamEndpoint } from '@sensewell/database';
 import { DatabaseService } from './database.service.js';
 import { captureStream, publishSegment } from './ip-camera-capture.js';
 import { decryptStream } from './ip-camera-source.js';
-import { jpegPart } from './replay-source.js';
+import { jpegPart } from './jpeg-stream.js';
 
 interface Capture {
   abort: AbortController;

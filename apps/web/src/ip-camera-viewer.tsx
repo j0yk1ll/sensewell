@@ -1,8 +1,9 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import type { CaptureStatus, IpCamera } from '@sensewell/contracts';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { CameraRemoval } from './camera-removal';
 import { cameraApi } from './camera-api';
 import { ZoneEditor } from './zone-editor';
 
@@ -18,14 +19,12 @@ export function IpCameraViewer({ camera, tenantId, onRemoved }: {
   tenantId: string;
   onRemoved: () => void;
 }) {
-  const [confirmingRemoval, setConfirmingRemoval] = useState(false);
   const capture = useQuery({
     queryKey: ['capture', tenantId, camera.id],
     queryFn: ({ signal }) => cameraApi.capture(camera.id, signal),
     refetchInterval: 1000,
     retry: false,
   });
-  const remove = useMutation({ mutationFn: () => cameraApi.remove(camera.id), onSuccess: onRemoved });
   const connected = !capture.isError && capture.data?.state === 'connected';
   const status = capture.isError ? 'Could not load capture status.'
     : capture.data ? captureLabel[capture.data.state] : 'Loading capture status…';
@@ -38,20 +37,9 @@ export function IpCameraViewer({ camera, tenantId, onRemoved }: {
           <h3 id="camera-title" className="mt-1 text-2xl font-semibold wrap-anywhere">{camera.name}</h3>
           <p className="mt-2 text-sm font-medium" role="status">{status}</p>
         </div>
-        <Button type="button" variant="outline" onClick={() => setConfirmingRemoval(true)}
-          disabled={confirmingRemoval}>Remove camera</Button>
+        <CameraRemoval id={camera.id} onRemoved={onRemoved}
+          description="Removing this camera stops capture and removes it from the workspace." />
       </div>
-      {confirmingRemoval && <div className="grid gap-3 border-t px-5 py-4 sm:px-6">
-        <p>Removing this camera stops capture and removes it from the workspace.</p>
-        {remove.isError && <p className="error" role="alert">{remove.error.message}</p>}
-        <div className="flex flex-wrap gap-3">
-          <Button type="button" variant="destructive" disabled={remove.isPending} onClick={() => remove.mutate()}>
-            {remove.isPending ? 'Removing camera…' : 'Confirm removal'}
-          </Button>
-          <Button type="button" variant="outline" disabled={remove.isPending}
-            onClick={() => { remove.reset(); setConfirmingRemoval(false); }}>Cancel</Button>
-        </div>
-      </div>}
       <LivePreview id={camera.id} tenantId={tenantId} connected={connected} status={status} />
       <Recordings cameraId={camera.id} tenantId={tenantId} unavailable={capture.data?.state === 'unavailable' || capture.data?.state === 'blocked'} />
     </Card>

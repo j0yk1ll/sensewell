@@ -4,7 +4,7 @@ import test from 'node:test';
 import { sql } from 'drizzle-orm';
 import { Client } from 'pg';
 import { migrateDatabase } from '../dist/migrate.js';
-import { cameraRecordings, cameraZones, createDatabase, normalizeCameraEndpoint, operationalEvents, replayZoneEntries, zoneEntryRules } from '../dist/index.js';
+import { cameraRecordings, cameras, cameraZones, createDatabase, normalizeCameraEndpoint, operationalEvents, replayPasses, replayZoneEntries, zoneEntryRules } from '../dist/index.js';
 
 test('PostgreSQL isolates operational events under the application role', async (t) => {
   await migrateDatabase();
@@ -52,9 +52,9 @@ test('camera zones persist in their camera and tenant context', async (t) => {
   const otherTenant = randomUUID();
   const cameraId = randomUUID();
   const siblingId = randomUUID();
-  const camera = { name: 'Warehouse', durationMs: 1000, startOffsetMs: 0 };
-  await database.cameras.add(tenant, { ...camera, id: cameraId });
-  await database.cameras.add(tenant, { ...camera, id: siblingId });
+  const camera = { name: 'Warehouse', encryptedStream: 'opaque camera configuration' };
+  await database.cameras.addIp(tenant, { ...camera, id: cameraId });
+  await database.cameras.addIp(tenant, { ...camera, id: siblingId });
 
   const input = {
     name: 'Rack-side aisle',
@@ -181,9 +181,9 @@ test('confirmed replay events retain private evidence from their original pass',
   const otherTenant = randomUUID();
   const cameraId = randomUUID();
   const siblingId = randomUUID();
-  const camera = { name: 'Warehouse', durationMs: 1000, startOffsetMs: 0 };
-  await database.cameras.add(tenant, { ...camera, id: cameraId });
-  await database.cameras.add(tenant, { ...camera, id: siblingId });
+  const camera = { name: 'Warehouse', encryptedStream: 'opaque camera configuration' };
+  await database.cameras.addIp(tenant, { ...camera, id: cameraId });
+  await database.cameras.addIp(tenant, { ...camera, id: siblingId });
 
   const zone = await database.zones.add(tenant, cameraId, {
     name: 'Rack side', points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }],
@@ -202,9 +202,9 @@ test('confirmed replay events retain private evidence from their original pass',
 
   const passId = randomUUID();
   const runId = randomUUID();
-  await database.cameras.recordPass(tenant, { cameraId, id: passId, runId, passNumber: 1 });
+  await database.forTenant(tenant, (tx) => tx.insert(replayPasses).values({ tenantId: tenant, cameraId, id: passId, runId, passNumber: 1 }));
   const otherPassId = randomUUID();
-  await database.cameras.recordPass(tenant, { cameraId, id: otherPassId, runId, passNumber: 2 });
+  await database.forTenant(tenant, (tx) => tx.insert(replayPasses).values({ tenantId: tenant, cameraId, id: otherPassId, runId, passNumber: 2 }));
   const person = { box: [0.2, 0.3, 0.4, 0.5] as [number, number, number, number], confidence: 0.85 };
   const jpeg = Buffer.from('sample frame bytes');
   const frame = { cameraId, passId, passNumber: 1, sourceMs: 200, detections: [person], occurredAt: new Date(), jpeg };
@@ -273,7 +273,7 @@ test('confirmed replay events retain private evidence from their original pass',
   assert.deepEqual((await database.zoneEntries.history(tenant, cameraId)).map(({ passNumber }) => passNumber), [2, 1, 1]);
 
   const freshPassId = randomUUID();
-  await database.cameras.recordPass(tenant, { cameraId, id: freshPassId, runId: randomUUID() });
+  await database.forTenant(tenant, (tx) => tx.insert(replayPasses).values({ tenantId: tenant, cameraId, id: freshPassId, runId: randomUUID() }));
   assert.deepEqual(await database.zoneEntries.history(tenant, cameraId), []);
   await database.observations.recordForReplay(tenant, { ...frame, passId: freshPassId }, (rules) => ({
     crossings: rules.map((rule) => ({ rule, detectionIndex: 0, direction: 'entry' })),
@@ -292,4 +292,40 @@ test('confirmed replay events retain private evidence from their original pass',
   assert.deepEqual(await database.zoneEntries.evidence(tenant, cameraId, event.id), {
     ...event, zone, detection: { ...person, objectType: 'person' }, jpeg: jpeg.toString('base64'),
   });
+});
+
+test('legacy clip cameras stay out of the workspace and retain their replay passes', async (t) => {
+  await migrateDatabase();
+  const database = createDatabase({ max: 1 });
+  t.after(() => database.close());
+  const admin = new Client({ connectionString: process.env.DATABASE_MIGRATION_URL });
+  await admin.connect();
+  t.after(() => admin.end());
+
+  const tenantId = randomUUID();
+  const cameraId = randomUUID();
+  const ipCameraId = randomUUID();
+  const passId = randomUUID();
+  await admin.query(
+    'insert into cameras (id, tenant_id, name, duration_ms, start_offset_ms) values ($1, $2, $3, 1000, 0)',
+    [cameraId, tenantId, 'Legacy clip'],
+  );
+  await admin.query(
+    'insert into replay_passes (id, tenant_id, camera_id, run_id, pass_number) values ($1, $2, $3, $1, 1)',
+    [passId, tenantId, cameraId],
+  );
+  await database.cameras.addIp(tenantId, { id: ipCameraId, name: 'Live feed', encryptedStream: 'fixture' });
+
+  assert.deepEqual(await database.cameras.list(tenantId), [{ id: ipCameraId, name: 'Live feed' }]);
+  assert.equal(await database.cameras.find(tenantId, cameraId), undefined);
+  assert.equal(await database.cameras.removeIp(tenantId, cameraId), false);
+  assert.equal((await database.zoneActivity.passes(tenantId, cameraId))[0]?.id, passId);
+
+  await assert.rejects(
+    database.forTenant(tenantId, (tx) => tx.insert(cameras).values({
+      tenantId, id: randomUUID(), name: 'Legacy clip', durationMs: 1000, startOffsetMs: 0,
+    })),
+    (error: unknown) =>
+      error instanceof Error && (error.cause as { code?: string } | undefined)?.code === '42501',
+  );
 });

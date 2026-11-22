@@ -4,10 +4,6 @@ import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fa
 import { AppModule } from './app.module.js';
 
 const adapter = new FastifyAdapter();
-adapter.getInstance().addContentTypeParser('application/octet-stream', (_request, body, done) => {
-  done(null, body);
-});
-
 const app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter);
 
 if (process.env.STATIC_ROOT) {
