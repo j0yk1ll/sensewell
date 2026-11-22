@@ -2,6 +2,8 @@
 
 Metadata for 20 downloaded LOD0 GLB models from [tevy](https://tevy.dev/). Model descriptions, dimensions, moving-part names, animation durations, geometry counts, and file sizes are taken from the individual asset pages (checked 2026-11-22).
 
+The local GLBs embed PNG textures for direct import in Blender 5.2. The meshes, materials, rigs, and animations retain their original data. The pinned URLs and download sizes below refer to the upstream KTX2 versions.
+
 ## License and usage
 
 **All 20 models are published under [Creative Commons CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)** on their respective tevy pages. CC0 permits copying, modification, distribution, and commercial use without attribution. Preserve these source links for provenance. Third-party trademarks and other rights, if any, are not necessarily covered by CC0.

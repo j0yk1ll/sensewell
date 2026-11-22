@@ -1,0 +1,14 @@
+rtspTransports: [tcp]
+rtmp: false
+hls: false
+webrtc: false
+srt: false
+moq: false
+
+pathDefaults:
+  overridePublisher: false
+
+paths:
+  staging:
+  aisle:
+  dispatch:

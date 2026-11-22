@@ -53,6 +53,8 @@ Chat evaluates recorded detections against the current saved zones using the req
 
 ## Connect and record an IP camera
 
+The optional [warehouse simulator](docs/warehouse-demo.md#run-the-warehouse-as-ip-cameras) provides three local RTSP feeds for this workflow.
+
 1. Sign in. A camera endpoint administrator can open **Camera endpoints** and approve a hostname, IP address, or RTSP URL. Approvals are saved by host and port, with 554 as the default. For the public Sarine Valley webcam, paste `rtsp://rtsp.143b.ch:554/stream`.
 2. Select **IP camera** under **Camera source**. Enter a name, the `rtsp://` stream URL, and any credentials in the separate fields. Choose **Connect IP camera**.
 3. Capture starts automatically. When the feed is interrupted the workspace reports it as unavailable and retries in the background. Capture also resumes after an app restart. Keep `BETTER_AUTH_SECRET` stable across restarts so saved camera settings can be decrypted.

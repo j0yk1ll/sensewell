@@ -2,9 +2,43 @@
 
 The Blender fixture uses fixed staging, transfer-aisle, and dispatch cameras. Each scenario produces three H.264 MP4s at 10 fps. The clips start at source time zero and play at 1×. The road worker uses the supplied walk cycle with a retargeted two-handed carton carry. A separate pedestrian route keeps the worker clear of the forklift lane.
 
+## Run the warehouse as IP cameras
+
+Start the regular Sensewell stack. Then start the optional warehouse services from the same repository and Compose project.
+
+```sh
+docker compose up -d --build
+docker compose -f compose.yaml -f compose.warehouse.yaml up -d --build warehouse-sim
+```
+
+The image includes the Blender-rendered 24-second transfer. It loops at 1× and publishes all three views from a shared clock over RTSP/TCP.
+
+To render scene edits or pick a different scenario entirely in Docker, select the render target and rebuild. This target uses the Linux x86-64 Blender release and software rendering, so the first build takes longer. Use a scenario name from the table below.
+
+```sh
+WAREHOUSE_IMAGE_TARGET=simulator-rendered WAREHOUSE_SCENARIO=supported-handoff \
+  docker compose -f compose.yaml -f compose.warehouse.yaml up -d --build warehouse-sim
+```
+
+In Sensewell, approve `warehouse-rtsp:8554` once in **Camera endpoints**, then add each of these as an **IP camera**. Leave the username and password blank. See the [IP camera setup](../README.md#connect-and-record-an-ip-camera) for the administrator grant.
+
+| Camera | RTSP URL for Sensewell in Compose |
+| --- | --- |
+| Staging | `rtsp://warehouse-rtsp:8554/staging` |
+| Transfer aisle | `rtsp://warehouse-rtsp:8554/aisle` |
+| Dispatch | `rtsp://warehouse-rtsp:8554/dispatch` |
+
+The feeds use Sensewell's normal live IP camera preview and recording workflow. To inspect a feed from the host, use `ffplay -rtsp_transport tcp rtsp://127.0.0.1:8554/staging`. Set `WAREHOUSE_RTSP_PORT` before starting the simulator if host port 8554 is occupied. The Compose URLs above keep port 8554.
+
+Stop the simulator and RTSP server with this command. Sensewell remains running and retains recorded footage.
+
+```sh
+docker compose -f compose.yaml -f compose.warehouse.yaml stop warehouse-sim warehouse-rtsp
+```
+
 ## Generate the recordings
 
-Install Blender 5.2 or later, FFmpeg with `libx264`, and the Khronos `ktx` CLI. Blender imports intermediate GLBs whose KTX2 textures have been converted to PNG. The original GLBs stay in `assets/`. [KTX releases](https://github.com/KhronosGroup/KTX-Software/releases) · [Asset provenance](../assets/README.md)
+Install Blender 5.2 or later and FFmpeg with `libx264`. Blender loads the GLBs in `assets/` directly. Their textures are embedded PNGs. [Asset provenance](../assets/README.md)
 
 From the repository root, render all five fixture variants.
 
@@ -13,6 +47,13 @@ blender -b -t 6 --python-exit-code 1 -P scripts/warehouse-demo/render.py -- --ou
 ```
 
 Use `--scenario transfer` to render a single variant. Add `--still 6 --still 10 --still 18` for previews at selected source times. Output defaults to 960 × 540. The default Workbench renderer reuses stills for the stationary part of the dwell and across variants that share the same choreography. Use `--engine BLENDER_EEVEE` for higher-quality lighting at a longer render time.
+
+After rendering the transfer, regenerate the bundled RTSP loop with:
+
+```sh
+sh scripts/warehouse-demo/container/pack-cameras.sh warehouse-fixtures/transfer \
+  scripts/warehouse-demo/container/transfer.mp4
+```
 
 | Fixture | Reference occurrence | Expected conclusion from available evidence |
 | --- | --- | --- |

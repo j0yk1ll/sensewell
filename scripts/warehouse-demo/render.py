@@ -121,7 +121,7 @@ def main():
         parser.error('The image width and height must be positive even integers.')
     with TemporaryDirectory(prefix='sensewell-warehouse-') as directory:
         work = Path(directory)
-        setup = Warehouse(work, args.width, args.height, args.engine)
+        setup = Warehouse(args.width, args.height, args.engine)
         for name in args.scenario or SCENARIOS:
             scenario = SCENARIOS[name]
             output = (args.output / name).resolve()

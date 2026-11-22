@@ -1,0 +1,20 @@
+services:
+  warehouse-rtsp:
+    image: docker.io/bluenviron/mediamtx:1.21.4
+    restart: unless-stopped
+    volumes:
+      - ./scripts/warehouse-demo/container/mediamtx.yml:/mediamtx.yml:ro,Z
+    ports:
+      - "127.0.0.1:${WAREHOUSE_RTSP_PORT:-8554}:8554"
+
+  warehouse-sim:
+    build:
+      context: .
+      dockerfile: scripts/warehouse-demo/container/Dockerfile
+      target: ${WAREHOUSE_IMAGE_TARGET:-simulator}
+      args:
+        WAREHOUSE_SCENARIO: ${WAREHOUSE_SCENARIO:-transfer}
+    depends_on:
+      - warehouse-rtsp
+    init: true
+    restart: unless-stopped

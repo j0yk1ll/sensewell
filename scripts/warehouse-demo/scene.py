@@ -6,16 +6,14 @@ from pathlib import Path
 import bpy
 from mathutils import Vector
 
-from asset_import import blender_glb
 from scenarios import CAMERAS, DWELL, FPS, LOOKALIKE, TRANSFER, ZONES, pallet_position, position
 
 ASSETS = Path(__file__).resolve().parents[2] / 'assets'
 
 
 class Warehouse:
-    def __init__(self, work, width, height, engine):
+    def __init__(self, width, height, engine):
         bpy.ops.wm.read_factory_settings(use_empty=True)
-        self.work = work
         self.scene = bpy.context.scene
         self.scene.render.engine = engine
         self.scene.render.resolution_x = width
@@ -106,7 +104,7 @@ class Warehouse:
 
     def asset(self, filename, instance, location=(0, 0, 0), heading=0):
         before = set(bpy.data.objects)
-        glb = blender_glb(ASSETS / f'{filename}-lod0.glb', self.work)
+        glb = ASSETS / f'{filename}-lod0.glb'
         bpy.ops.import_scene.gltf(filepath=str(glb))
         imported = set(bpy.data.objects) - before
         root = bpy.data.objects.new(instance, None)
