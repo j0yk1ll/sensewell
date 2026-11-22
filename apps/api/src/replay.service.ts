@@ -303,8 +303,8 @@ export class ReplayService implements OnModuleDestroy {
             const { crossings, evidence } = zoneEntries.evaluate(sourceMs, detections, rules);
             return {
               evidence,
-              crossings: crossings.map(({ rule, detection, direction }) => ({
-                rule, direction, detectionIndex: detections.indexOf(detection),
+              crossings: crossings.map(({ rule, detection, direction, ground }) => ({
+                rule, direction, ground, detectionIndex: detections.indexOf(detection),
               })),
             };
           },

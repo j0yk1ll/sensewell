@@ -22,7 +22,7 @@ export async function detectObjects(
     let bytes = 0;
     for await (const chunk of socket) {
       bytes += chunk.length;
-      if (bytes > 64 * 1024) throw new Error('Detector response is too large.');
+      if (bytes > 256 * 1024) throw new Error('Detector response is too large.');
       chunks.push(chunk);
     }
     return detectorFrameAnalysis.parse(JSON.parse(Buffer.concat(chunks).toString('utf8')));

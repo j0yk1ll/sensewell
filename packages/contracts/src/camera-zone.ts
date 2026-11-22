@@ -1,11 +1,11 @@
 import { z } from 'zod';
+import { calibrateGroundZone, groundZone, imagePoint } from './ground-zone.js';
 
 export const maxZoneNameLength = 100;
 export const maxZonePoints = 32;
 
 // Coordinates are fractions of the source image, measured from its top left.
-const coordinate = z.number().min(0).max(1);
-const zonePoint = z.strictObject({ x: coordinate, y: coordinate });
+const zonePoint = imagePoint;
 export type ZonePoint = z.infer<typeof zonePoint>;
 
 function turn(a: ZonePoint, b: ZonePoint, c: ZonePoint) {
@@ -52,14 +52,30 @@ function isPolygon(points: ZonePoint[]) {
   return true;
 }
 
+const outline = z.array(zonePoint).min(3).max(maxZonePoints)
+  .refine(isPolygon, 'Draw an outline with distinct corners and edges that do not cross.');
+
 export const cameraZoneInput = z.strictObject({
   name: z.string().trim().min(1).max(maxZoneNameLength)
     .refine((name) => !name.includes(String.fromCharCode(0)), 'Enter a valid zone name.'),
-  points: z.array(zonePoint).min(3).max(maxZonePoints)
-    .refine(isPolygon, 'Draw an outline with distinct corners and edges that do not cross.'),
+  points: outline,
+  ground: groundZone.nullish(),
 });
 export const cameraZone = cameraZoneInput.extend({ id: z.uuid() });
 export const cameraZoneList = z.array(cameraZone);
 
 export type CameraZoneInput = z.infer<typeof cameraZoneInput>;
 export type CameraZone = z.infer<typeof cameraZone>;
+
+export function calibratedZoneInput(input: CameraZoneInput): CameraZoneInput | undefined {
+  if (!input.ground) return input;
+  const calibration = calibrateGroundZone(input.ground);
+  if (!calibration) return;
+  // Permit rounding at the edges of the image.
+  const projected = calibration.outline.map(({ x, y }) => ({
+    x: Math.abs(x) < 1e-10 ? 0 : Math.abs(1 - x) < 1e-10 ? 1 : x,
+    y: Math.abs(y) < 1e-10 ? 0 : Math.abs(1 - y) < 1e-10 ? 1 : y,
+  }));
+  const points = outline.safeParse(projected);
+  if (points.success) return { ...input, points: points.data };
+}

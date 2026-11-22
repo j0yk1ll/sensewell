@@ -8,13 +8,14 @@ import { Label } from '@/components/ui/label';
 import { formatClipTime } from '@/lib/utils';
 import { cameraApi } from './camera-api';
 import { ActivityChat } from './activity-chat';
-import { DetectionBox, ZoneOverlay } from './zone-overlay';
+import { DetectionBox, GroundMarkers, GroundPositionDescription, ZoneOverlay } from './zone-overlay';
 
 type RuleActivity = ZoneActivity['rules'][number];
 type Sample = RuleActivity['crossings'][number]['before'];
 type InspectObservation = (sample: Sample, button: HTMLButtonElement) => void;
 const time = (ms: number) => formatClipTime(ms, true);
 const visitReason = {
+  'ground-unknown': 'Ground position uncertain',
   'possible-exit': 'Exit obscured',
   ambiguous: 'Track match ambiguous',
   expired: 'Track recovery expired',
@@ -159,10 +160,14 @@ function ObservationInspector({ id, passId, passNumber, sample, zoneName, onClos
           <ZoneOverlay footage={footage} sourceSize={sourceSize}
             zones={[{ id: passId, name: zoneName, points: sample.points }]} />
           <DetectionBox box={sample.detection.box} />
+          {sample.ground && <GroundMarkers decision={sample.ground} />}
         </>}
       </div>
-      {error && <figcaption className="error" role="alert">Source footage unavailable.</figcaption>}
-      {!error && !ready && <figcaption className="text-sm" role="status">Loading source frame…</figcaption>}
+      <figcaption className="mt-1 text-sm text-slate-700">
+        {error && <span className="error" role="alert">Source footage unavailable. </span>}
+        {!error && !ready && <span role="status">Loading source frame… </span>}
+        {sample.ground && <GroundPositionDescription decision={sample.ground} />}
+      </figcaption>
     </figure>
     <p className="text-sm">Open source clip at <SourceTime id={id} ms={sample.sourceMs} /></p>
   </section>;
@@ -172,6 +177,7 @@ function RuleEvidence({ id, rule, atMs, onInspect }: {
   id: string; rule: RuleActivity; atMs?: number; onInspect: InspectObservation;
 }) {
   const { occupancy, crossings, gaps, visits } = rule;
+  const positions = occupancy?.positions ?? occupancy?.inside ?? [];
   return (
     <section className="grid gap-3 border-t pt-4 text-sm">
       <div>
@@ -191,10 +197,13 @@ function RuleEvidence({ id, rule, atMs, onInspect }: {
           </dd>}
         </div>
       </dl>
-      {!!occupancy?.inside.length && <details>
-        <summary className="cursor-pointer font-medium">Occupancy observations</summary>
+      {positions.length > 0 && <details>
+        <summary className="cursor-pointer font-medium">{occupancy?.positions ? 'Ground position observations' : 'Occupancy observations'}</summary>
         <ul className="list-disc pl-5 pt-1">
-          {occupancy.inside.map((sample) => <li key={sample.trackId}>Track {sample.trackId} · <Observation onInspect={onInspect} sample={sample} /></li>)}
+          {positions.map((sample) => <li key={sample.trackId}>
+            Track {sample.trackId} · <Observation onInspect={onInspect} sample={sample} />
+            {sample.ground && <> · <GroundPositionDescription decision={sample.ground} /></>}
+          </li>)}
         </ul>
       </details>}
       <details>
@@ -203,7 +212,10 @@ function RuleEvidence({ id, rule, atMs, onInspect }: {
           {crossings.map(({ trackId, certainty, direction, before, after }) => (
             <li key={`${trackId}:${after.sourceMs}`} className="py-2">
               <p className="font-medium capitalize">{certainty} {direction} · Track {trackId}</p>
-              {certainty === 'possible' && <p>Possible crossing interval <SourceTime id={id} ms={before.sourceMs} endMs={after.sourceMs} /></p>}
+              {(certainty === 'possible' || after.ground) && <p>
+                {certainty === 'possible' ? 'Possible crossing interval' : 'Observed crossing interval'}{' '}
+                <SourceTime id={id} ms={before.sourceMs} endMs={after.sourceMs} />
+              </p>}
               <p>Before <Observation onInspect={onInspect} sample={before} /> · After <Observation onInspect={onInspect} sample={after} /></p>
             </li>
           ))}
@@ -212,11 +224,12 @@ function RuleEvidence({ id, rule, atMs, onInspect }: {
       <details>
         <summary className="cursor-pointer font-medium">Observation gaps ({gaps.length})</summary>
         <ul className="divide-y">
-          {gaps.map(({ trackId, startMs, endMs, reason }) => (
+          {gaps.map(({ trackId, startMs, endMs, reason, observation }) => (
             <li key={`${trackId}:${startMs}`} className="py-2">
               Track {trackId} · {reason === 'recovered' ? 'Recovered' : reason === 'missing' ? 'Position unknown' : visitReason[reason]}
               {' · '}{endMs === null ? 'Last qualifying observation ' : 'Gap between '}
               <SourceTime id={id} ms={startMs} endMs={endMs ?? undefined} />
+              {observation && <> · Uncertain observation <Observation onInspect={onInspect} sample={observation} /></>}
             </li>
           ))}
         </ul>
@@ -234,7 +247,7 @@ function RuleEvidence({ id, rule, atMs, onInspect }: {
                 {' · '}Exit {exit ? <Observation onInspect={onInspect} sample={exit} /> : state === 'open' ? 'pending' : 'unknown'}</p>
               {!entry && <p>First observed inside <Observation onInspect={onInspect} sample={firstInside} /></p>}
               {!exit && <p>Last observed inside <Observation onInspect={onInspect} sample={lastInside} /></p>}
-              {entry && exit && <p>Dwell {((exit.sourceMs - entry.sourceMs) / 1000).toFixed(3)} s</p>}
+              {entry && exit && <p>{entry.ground ? 'Dwell estimate' : 'Dwell'} {((exit.sourceMs - entry.sourceMs) / 1000).toFixed(3)} s</p>}
             </li>
           ))}
         </ul>

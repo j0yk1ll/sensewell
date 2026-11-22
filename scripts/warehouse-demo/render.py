@@ -13,17 +13,17 @@ from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from scenarios import CAMERAS, DWELL, FPS, LOOKALIKE, PALLET_OFFSET, SCENARIOS, TRANSFER, ZONES, coverage_missing, reference
+from scenarios import CAMERAS, DWELL, FPS, LOOKALIKE, PALLET_OFFSET, PEDESTRIAN_ZONE, SCENARIOS, TRANSFER, ZONES, coverage_missing, reference
 from scene import Warehouse
 
 
-def calibration(setup, camera, width, height):
+def calibration(setup, camera, width, height, floor_zones):
     project = camera.calc_matrix_camera(bpy.context.evaluated_depsgraph_get(), x=width, y=height)
     project = project @ camera.matrix_world.inverted()
     x, y, _, w = project
     homography = [[row[i] for i in (0, 1, 3)] for row in ((x + w) / 2, (w - y) / 2, w)]
     zones = {}
-    for name, (left, near, right, far) in ZONES.items():
+    for name, (left, near, right, far) in floor_zones.items():
         points = [(left, near), (right, near), (right, far), (left, far)]
         projected = [world_to_camera_view(setup.scene, camera, Vector((*p, 0))) for p in points]
         if all(0 <= p.x <= 1 and 0 <= p.y <= 1 and p.z > 0 for p in projected):
@@ -60,13 +60,14 @@ def pose_frame(scenario, frame):
     return min(frame, end * FPS)
 
 
-def render_recordings(setup, name, scenario, output, work, width, height):
+def render_recordings(setup, name, scenario, output, work, width, height, cameras):
     output.mkdir(parents=True, exist_ok=True)
     refs = reference(name, scenario)
     frames = scenario['duration'] * FPS
+    floor_zones = {**ZONES, **PEDESTRIAN_ZONE} if scenario.get('ground_position') else ZONES
     manifest = dict(
         version=1, scenario=name, fps=FPS, durationMs=scenario['duration'] * 1000,
-        imageSize=dict(width=width, height=height), zones=ZONES, cameras={}, **refs,
+        imageSize=dict(width=width, height=height), zones=floor_zones, cameras={}, **refs,
     )
     manifest['choreography'] = {'F1': DWELL if scenario.get('dwell') else TRANSFER}
     if scenario.get('second_forklift'):
@@ -74,9 +75,16 @@ def render_recordings(setup, name, scenario, output, work, width, height):
     if not scenario.get('dwell'):
         manifest['palletOffsetM'] = PALLET_OFFSET
     family = 'dwell' if scenario.get('dwell') else 'two' if scenario.get('second_forklift') else 'one'
-    for camera in CAMERAS:
+    if scenario.get('ground_position'):
+        family = 'ground-position'
+        manifest['ankles'] = []
+        for frame in range(frames):
+            setup.pose(scenario, frame / FPS)
+            ankles = [setup.rig.matrix_world @ setup.rig.pose.bones[f'foot_{side}'].head for side in ('L', 'R')]
+            manifest['ankles'].append([list(ankle.xy) for ankle in ankles])
+    for camera in cameras:
         filename = f'{camera}.mp4'
-        manifest['cameras'][camera] = dict(file=filename, **calibration(setup, setup.cameras[camera], width, height))
+        manifest['cameras'][camera] = dict(file=filename, **calibration(setup, setup.cameras[camera], width, height, floor_zones))
         sequence = []
         for frame in range(frames):
             if coverage_missing(scenario, camera, frame / FPS):
@@ -111,6 +119,7 @@ def render_recordings(setup, name, scenario, output, work, width, height):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=Path('warehouse-fixtures'))
+    parser.add_argument('--camera', choices=CAMERAS, action='append')
     parser.add_argument('--scenario', choices=SCENARIOS, action='append')
     parser.add_argument('--width', type=int, default=960)
     parser.add_argument('--height', type=int, default=540)
@@ -130,14 +139,14 @@ def main():
                 for second in args.still:
                     if not 0 <= second < scenario['duration']:
                         parser.error(f'The preview time is outside {name}.')
-                    for camera in CAMERAS:
+                    for camera in args.camera or CAMERAS:
                         path = output / f'{camera}-{second:g}s.png'
                         if coverage_missing(scenario, camera, second):
                             copyfile(black_frame(work, args.width, args.height), path)
                         else:
                             render_still(setup, camera, scenario, second, path)
             else:
-                render_recordings(setup, name, scenario, output, work, args.width, args.height)
+                render_recordings(setup, name, scenario, output, work, args.width, args.height, args.camera or CAMERAS)
 
 
 if __name__ == '__main__':

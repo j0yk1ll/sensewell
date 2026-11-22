@@ -81,14 +81,14 @@ export function ZoneEditor({ id, tenantId, sourceSize, children, timeline }: {
     returnFocus.current = button;
     save.reset();
     setMessage('');
-    setDraft(zone ? { zoneId: zone.id, name: zone.name, points: zone.points } : { name: '', points: [] });
+    setDraft(zone ? { zoneId: zone.id, name: zone.name, points: zone.points, ground: zone.ground } : { name: '', points: [] });
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!draft || !sourceSize || save.isPending) return;
-    const { name, points, zoneId } = draft;
-    const zone = cameraZoneInput.safeParse({ name, points });
+    const { name, points, ground, zoneId } = draft;
+    const zone = cameraZoneInput.safeParse({ name, points, ground });
     if (!zone.success) {
       setError(zone.error.issues[0]?.path[0] === 'name'
         ? 'Enter a zone name.'
@@ -111,8 +111,8 @@ export function ZoneEditor({ id, tenantId, sourceSize, children, timeline }: {
       <div ref={footage} className="footage" onContextMenu={(event) => event.preventDefault()}>
         {children}
         {sourceSize && (draft || visibleZones.length > 0) && <ZoneOverlay
-          footage={footage} sourceSize={sourceSize} zones={visibleZones} drawingArea={drawingArea}
-          draft={draft ? { points: draft.points, onPoint: addPoint, saving: save.isPending } : undefined}
+          footage={footage} sourceSize={sourceSize} zones={draft?.ground ? zones.data ?? [] : visibleZones} drawingArea={drawingArea}
+          draft={draft && !draft.ground ? { points: draft.points, onPoint: addPoint, saving: save.isPending } : undefined}
         />}
       </div>
       {timeline}
@@ -161,6 +161,7 @@ export function ZoneEditor({ id, tenantId, sourceSize, children, timeline }: {
         </div>}
         {draft && <form className="grid gap-3" onSubmit={submit}>
           {draft.zoneId && <h5 className="font-medium">Edit zone</h5>}
+          {draft.ground ? <p className="text-sm text-slate-600">This outline comes from the calibrated floor plan.</p> : <>
           <p id="zone-drawing-instructions" className="text-sm text-slate-600">
             Click or tap each corner on the preview. With the drawing area focused, use arrow keys to move the cursor
             and Enter to place a corner.
@@ -169,6 +170,7 @@ export function ZoneEditor({ id, tenantId, sourceSize, children, timeline }: {
             {draft.points.length} {draft.points.length === 1 ? 'corner' : 'corners'} placed
             {draft.points.length === maxZonePoints ? ' (limit reached)' : ''}
           </p>
+          </>}
           <div className="field">
             <Label htmlFor="zone-name">Zone name</Label>
             <Input id="zone-name" name="name" required maxLength={maxZoneNameLength} disabled={save.isPending}
@@ -182,12 +184,12 @@ export function ZoneEditor({ id, tenantId, sourceSize, children, timeline }: {
             <Button type="submit" disabled={!sourceSize || draft.points.length < 3 || save.isPending}>
               {save.isPending ? 'Saving zone…' : draft.zoneId ? 'Save changes' : 'Save zone'}
             </Button>
-            <Button type="button" variant="outline" disabled={!draft.points.length || save.isPending}
+            {!draft.ground && <Button type="button" variant="outline" disabled={!draft.points.length || save.isPending}
               onClick={() => {
                 setError('');
                 setDraft((current) => current && { ...current, points: current.points.slice(0, -1) });
-              }}>Undo corner</Button>
-            {draft.zoneId && <Button type="button" variant="outline" disabled={!draft.points.length || save.isPending}
+              }}>Undo corner</Button>}
+            {draft.zoneId && !draft.ground && <Button type="button" variant="outline" disabled={!draft.points.length || save.isPending}
               onClick={() => {
                 setError('');
                 setDraft((current) => current && { ...current, points: [] });

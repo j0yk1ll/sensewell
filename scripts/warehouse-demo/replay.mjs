@@ -7,6 +7,7 @@ import { createInterface } from 'node:readline';
 import { Readable } from 'node:stream';
 import { clearInterval, setInterval } from 'node:timers';
 import { URL } from 'node:url';
+import { groundZoneConfig } from './ground-zones.mjs';
 
 const [command, directory, profile = 'normal'] = process.argv.slice(2);
 if (!['import', 'play', 'stop'].includes(command) || !directory || !['normal', 'delay', 'outage'].includes(profile)) {
@@ -44,8 +45,8 @@ async function main() {
   const api = (path, options = {}) => request('/api/cameras' + path, {
     ...options, headers: { Cookie: cookie, ...options.headers },
   });
-  const sendJson = (path, body) => api(path, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  const sendJson = (path, body, method = 'POST') => api(path, {
+    method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
   const saved = await readFile(statePath, 'utf8').then(JSON.parse, (error) => {
     if (error.code !== 'ENOENT') throw error;
@@ -69,9 +70,17 @@ async function main() {
         await writeFile(statePath, JSON.stringify(saved, null, 2) + '\n');
       }
       const existing = await (await api(`/${cameras[name]}/zones`)).json();
-      for (const [zone, points] of Object.entries(manifest.cameras[name].zones)) {
-        if (!existing.some((savedZone) => savedZone.name === zone)) {
-          await sendJson(`/${cameras[name]}/zones`, { name: zone, points });
+      for (const zone of Object.keys(manifest.cameras[name].zones)) {
+        const savedZone = existing.find((entry) => entry.name === zone);
+        if (savedZone?.ground) continue;
+        const config = groundZoneConfig(manifest, name, zone);
+        if (savedZone) {
+          const sameOutline = savedZone.points.length === config.points.length
+            && savedZone.points.every(({ x, y }, index) => x === config.points[index].x && y === config.points[index].y);
+          if (!sameOutline) continue;
+          await sendJson(`/${cameras[name]}/zones/${savedZone.id}`, config, 'PUT');
+        } else {
+          await sendJson(`/${cameras[name]}/zones`, config);
         }
       }
       console.log(`${name} ${cameras[name]}`);

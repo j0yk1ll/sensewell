@@ -1,4 +1,4 @@
-import type { ZoneActivityFrame } from '@sensewell/contracts';
+import type { GroundDecision, GroundZone, ZoneActivityFrame } from '@sensewell/contracts';
 import { sql } from 'drizzle-orm';
 import { boolean, check, doublePrecision, foreignKey, index, integer, jsonb, pgPolicy, pgRole, pgTable, primaryKey, text, timestamp, unique, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
@@ -101,6 +101,7 @@ export const cameraZones = pgTable('camera_zones', {
   cameraId: uuid('camera_id').notNull(),
   name: text().notNull(),
   points: jsonb().$type<{ x: number; y: number }[]>().notNull(),
+  ground: jsonb().$type<GroundZone>(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (zone) => [
   tenantIsolation(zone.tenantId),
@@ -221,7 +222,7 @@ export const replayZoneEntries = pgTable('replay_zone_entries', {
   ruleId: uuid('rule_id').notNull(),
   ruleName: text('rule_name').notNull(),
   direction: text({ enum: ['entry', 'exit'] }).default('entry').notNull(),
-  zone: jsonb().$type<{ id: string; name: string; points: (typeof cameraZones.$inferSelect)['points'] }>().notNull(),
+  zone: jsonb().$type<{ id: string; name: string; points: (typeof cameraZones.$inferSelect)['points']; decision?: GroundDecision }>().notNull(),
   detectionIndex: integer('person_index').notNull(),
   objectType: text('object_type').default('person').notNull(),
 }, (entry) => [

@@ -26,6 +26,7 @@ ZONES = {
     'dispatch': [5, -2, 13.6, 5],
     'loading-zone': [7, -.5, 11.5, 3.2],
 }
+PEDESTRIAN_ZONE = {'pedestrian-gate': [-10.4, -2.85, -7.4, -1.55]}
 PALLET_OFFSET = 1.84
 BRIDGE = (9, 18)
 
@@ -56,6 +57,7 @@ SCENARIOS = {
     'transfer': dict(duration=24, second_forklift=False),
     'supported-handoff': dict(duration=24, second_forklift=True),
     'ambiguous-handoff': dict(duration=24, second_forklift=True, gap=('aisle', *BRIDGE)),
+    'ground-position': dict(duration=7, ground_position=True),
     'dwell': dict(duration=320, dwell=True),
     'dwell-gap': dict(duration=320, dwell=True, gap=('dispatch', 155, 185)),
 }
@@ -77,6 +79,9 @@ def reference(name, scenario):
         )
 
     identities.update(P1='pallet', W1='person', B1='box')
+    if scenario.get('ground_position'):
+        return dict(identities=identities, coverageGaps=coverage_gaps,
+                    expected=dict(pedestrianZone='pedestrian-gate', occluder='Foot occluder'))
     if scenario['second_forklift']:
         identities.update(F2='forklift', P2='pallet')
     result = dict(

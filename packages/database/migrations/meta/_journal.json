@@ -92,6 +92,13 @@
       "when": 1795255740454,
       "tag": "0012_replay_zone_activity",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795349163303,
+      "tag": "0013_calibrated_ground_zones",
+      "breakpoints": true
     }
   ]
 }

@@ -6,7 +6,7 @@ import {
   Param, ParseUUIDPipe, PayloadTooLargeException, Post, Put, Query, Req, Res,
   ServiceUnavailableException, UnsupportedMediaTypeException,
 } from '@nestjs/common';
-import { activityChatInput, cameraName, cameraZoneInput, ipCameraInput, maxCameraNameLength, maxClipBytes, maxClipMiB, replayGroupOptions, replayOptions, zoneEntryRuleInput, zoneEntryRuleToggle } from '@sensewell/contracts';
+import { activityChatInput, calibratedZoneInput, cameraName, cameraZoneInput, ipCameraInput, maxCameraNameLength, maxClipBytes, maxClipMiB, replayGroupOptions, replayOptions, zoneEntryRuleInput, zoneEntryRuleToggle } from '@sensewell/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AuthService } from './auth.js';
 import { ClipStorage, evidenceWindow } from './clip-storage.js';
@@ -39,7 +39,9 @@ function parseZone(body: unknown) {
   if (!zone.success) {
     throw new BadRequestException('Enter a zone name and draw a valid outline within the camera image.');
   }
-  return zone.data;
+  const calibrated = calibratedZoneInput(zone.data);
+  if (!calibrated) throw new BadRequestException('The floor plan must project inside the camera image and pass the independent calibration checks.');
+  return calibrated;
 }
 
 function parseRule(body: unknown) {

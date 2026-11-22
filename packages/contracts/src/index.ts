@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export { cameraZone, cameraZoneInput, cameraZoneList, maxZoneNameLength, maxZonePoints } from './camera-zone.js';
+export { calibratedZoneInput, cameraZone, cameraZoneInput, cameraZoneList, maxZoneNameLength, maxZonePoints } from './camera-zone.js';
 export type { CameraZone, CameraZoneInput, ZonePoint } from './camera-zone.js';
 
 export const healthResponse = z.object({
@@ -85,3 +85,5 @@ export { zoneActivity, zoneActivityFrame, zoneActivityPasses, zoneActivityRuleKe
 export type { ZoneActivity, ZoneActivityFrame } from './zone-activity.js';
 export { activityChatInput, activityChatResponse, activityQuery, maxActivityQuestionLength } from './activity-chat.js';
 export type { ActivityChatInput, ActivityChatSource, ActivityQuery } from './activity-chat.js';
+export { calibrateGroundZone } from './ground-zone.js';
+export type { GroundZone, GroundDecision } from './ground-zone.js';

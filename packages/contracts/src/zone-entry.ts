@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { groundDecision } from './ground-zone.js';
 import { cameraZone, cameraZoneInput } from './camera-zone.js';
 import { objectDetection, warehouseObjectType } from './replay-analysis.js';
 
@@ -46,7 +47,7 @@ export const zoneEntryHistory = z.array(zoneEntryEvent);
 export type ZoneEntryEvent = z.infer<typeof zoneEntryEvent>;
 
 export const zoneEntryEvidence = zoneEntryEvent.extend({
-  zone: cameraZone,
+  zone: cameraZone.extend({ decision: groundDecision.optional() }),
   window: z.object({ startMs: z.number().int().nonnegative(), endMs: z.number().int().positive() }),
   detection: objectDetection,
   jpeg: z.string().max(1_398_104),

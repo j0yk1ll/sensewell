@@ -1,3 +1,4 @@
+import type { GroundDecision } from '@sensewell/contracts';
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, gte, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -11,9 +12,9 @@ export { cameraRecordings, cameras, cameraZones, operationalEvents, replayObserv
 type TenantTransaction = Parameters<Parameters<ReturnType<typeof drizzle>['transaction']>[0]>[0];
 type RuleInput = Pick<typeof zoneEntryRules.$inferInsert, 'name' | 'zoneId' | 'minimumConfidence' | 'eventType' | 'objectTypes'>;
 type Observation = Omit<typeof replayObservations.$inferInsert, 'tenantId' | 'eventJpeg' | 'zoneActivity'>;
-type Crossing = { rule: ActiveRule; detectionIndex: number; direction: (typeof replayZoneEntries.$inferSelect)['direction'] };
-type ActiveRule = Required<RuleInput> & { id: string; revision: number; zoneName: string; points: ZoneInput['points'] };
-type ZoneInput = Pick<typeof cameraZones.$inferInsert, 'name' | 'points'>;
+type Crossing = { rule: ActiveRule; detectionIndex: number; ground?: GroundDecision; direction: (typeof replayZoneEntries.$inferSelect)['direction'] };
+type ActiveRule = Required<RuleInput> & { id: string; revision: number; zoneName: string; points: ZoneInput['points']; ground: typeof cameraZones.$inferSelect.ground };
+type ZoneInput = Pick<typeof cameraZones.$inferInsert, 'name' | 'points' | 'ground'>;
 
 async function lockRuleZone(tx: TenantTransaction, tenantId: string, cameraId: string, zoneId: string) {
   const [zone] = await tx.select({ id: cameraZones.id }).from(cameraZones)
@@ -67,7 +68,12 @@ export function createDatabase({ max }: { max?: number } = {}) {
     id: cameraZones.id,
     name: cameraZones.name,
     points: cameraZones.points,
+    ground: cameraZones.ground,
   };
+
+  function publicZone({ ground, ...zone }: Pick<typeof cameraZones.$inferSelect, keyof typeof zoneFields>) {
+    return ground ? { ...zone, ground } : zone;
+  }
 
   const ruleFields = {
     id: zoneEntryRules.id,
@@ -280,6 +286,7 @@ export function createDatabase({ max }: { max?: number } = {}) {
             revision: zoneEntryRules.revision,
             zoneName: cameraZones.name,
             points: cameraZones.points,
+            ground: cameraZones.ground,
           }).from(zoneEntryRules).innerJoin(cameraZones, and(
             eq(cameraZones.tenantId, zoneEntryRules.tenantId),
             eq(cameraZones.cameraId, zoneEntryRules.cameraId),
@@ -295,11 +302,11 @@ export function createDatabase({ max }: { max?: number } = {}) {
           if (!saved) return false;
           if (!crossings.length) return true;
 
-          const evidence = crossings.map(({ rule, detectionIndex, direction }) => ({
+          const evidence = crossings.map(({ rule, detectionIndex, direction, ground }) => ({
             eventId: randomUUID(), tenantId, cameraId, passId, passNumber, sourceMs,
             ruleId: rule.id, ruleName: rule.name, detectionIndex, direction,
             objectType: detections[detectionIndex]?.objectType ?? 'person',
-            zone: { id: rule.zoneId, name: rule.zoneName, points: rule.points },
+            zone: { id: rule.zoneId, name: rule.zoneName, points: rule.points, ...(ground ? { decision: ground } : {}) },
           }));
           await tx.insert(operationalEvents).values(evidence.map(({ eventId }) => ({ id: eventId, tenantId, occurredAt })));
           await tx.insert(replayZoneEntries).values(evidence);
@@ -336,18 +343,18 @@ export function createDatabase({ max }: { max?: number } = {}) {
       list(tenantId: string, cameraId: string) {
         return forTenant(tenantId, (tx) => tx.select(zoneFields).from(cameraZones)
           .where(zoneCamera(tenantId, cameraId))
-          .orderBy(asc(cameraZones.createdAt), asc(cameraZones.id)));
+          .orderBy(asc(cameraZones.createdAt), asc(cameraZones.id))).then((zones) => zones.map(publicZone));
       },
       async add(tenantId: string, cameraId: string, zone: ZoneInput) {
         const [saved] = await forTenant(tenantId, (tx) => tx.insert(cameraZones)
           .values({ ...zone, tenantId, cameraId }).returning(zoneFields));
         if (!saved) throw new Error('Zone insert returned no row.');
-        return saved;
+        return publicZone(saved);
       },
       async update(tenantId: string, cameraId: string, id: string, zone: ZoneInput) {
-        const [saved] = await forTenant(tenantId, (tx) => tx.update(cameraZones).set(zone)
+        const [saved] = await forTenant(tenantId, (tx) => tx.update(cameraZones).set({ ...zone, ground: zone.ground ?? null })
           .where(and(zoneCamera(tenantId, cameraId), eq(cameraZones.id, id))).returning(zoneFields));
-        return saved;
+        return saved && publicZone(saved);
       },
       async remove(tenantId: string, cameraId: string, id: string) {
         const [removed] = await forTenant(tenantId, (tx) => tx.delete(cameraZones)

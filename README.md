@@ -2,7 +2,7 @@
 
 ## Run locally
 
-Install Docker with the Compose v2 plugin. Place the trained RF-DETR Small export at `models/warehouse_detector.onnx` to enable person detection. Start the stack with:
+Install Docker with the Compose v2 plugin. Place the trained RF-DETR Small export at `models/warehouse_detector.onnx` to enable object detection. For calibrated person zones, also install the [pose model and floor-plan configuration](docs/warehouse-ground-position.md). Start the stack with:
 
 ```sh
 docker compose up --build

@@ -40,7 +40,7 @@ docker compose -f compose.yaml -f compose.warehouse.yaml stop warehouse-sim ware
 
 Install Blender 5.2 or later and FFmpeg with `libx264`. Blender loads the GLBs in `assets/` directly. Their textures are embedded PNGs. [Asset provenance](../assets/README.md)
 
-From the repository root, render all five fixture variants.
+From the repository root, render the fixture variants.
 
 ```sh
 blender -b -t 6 --python-exit-code 1 -P scripts/warehouse-demo/render.py -- --output warehouse-fixtures
@@ -66,6 +66,7 @@ sh scripts/warehouse-demo/container/pack-cameras.sh warehouse-fixtures/transfer 
 | `transfer` | Forklift F1 lifts pallet P1 at 00:06 and sets it down at 00:18 | Normal transfer from staging to dispatch |
 | `supported-handoff` | F1 delivers P1 while a second identical-looking forklift carries a lookalike load | The aisle view bridges the staging and dispatch views and supports the F1 → F1 link |
 | `ambiguous-handoff` | Same choreography with aisle coverage absent from 00:09 to 00:18 | The two loaded forklifts enter the blind interval and either could have emerged at dispatch. The link is undecided |
+| `ground-position` | W1 walks through the pedestrian gate and behind a foreground carton | Visible ankles support crossings when there is enough continuous evidence. The carton can obscure ground contact |
 | `dwell` | F1 enters the loading zone at 00:04, reaches five minutes at 05:04, and leaves at 05:14 | One continuous qualifying occurrence |
 | `dwell-gap` | Same dwell with dispatch coverage absent from 02:35 to 03:05 | Continuous presence is undecided. The other cameras cannot establish it |
 
@@ -94,7 +95,7 @@ node scripts/warehouse-demo/replay.mjs import warehouse-fixtures/transfer
 node scripts/warehouse-demo/replay.mjs play warehouse-fixtures/transfer
 ```
 
-Import uploads the clips as Synthetic Cameras, saves zones whose four corners are fully visible, and writes the camera IDs into `replay-cameras.json` beside the fixture manifest. To use regenerated footage, render into a fresh directory and import it there. Repeat the same commands with another fixture directory to switch scenarios.
+Import uploads the clips as Synthetic Cameras, saves calibrated floor zones whose four corners are fully visible, and writes the camera IDs into `replay-cameras.json` beside the fixture manifest. To use regenerated footage, render into a fresh directory and import it there. Repeat the same commands with another fixture directory to switch scenarios.
 
 One `play` starts all three cameras on the same source clock with a 2.5-second analysis buffer. It prints the run and pass IDs, followed by per-camera source time, most recent analyzed source time, displayed-frame analysis status, and analyzed-frame count. Open the three imported Synthetic Cameras in separate visible browser windows to watch the running views and detection overlays together. Use Ctrl+C to stop all three, or run `stop` with the same fixture directory and profile from another terminal.
 
@@ -114,7 +115,7 @@ The outage profile selects the identically choreographed `ambiguous-handoff` foo
 
 ## Inspect and score the fixtures
 
-Each scenario directory has a `manifest.json` with camera IDs and files, the shared frame rate and duration, floor-plan zones, fixture-only identities, event times, evidence windows, and coverage gaps. Reference annotations are for comparison with footage-derived results. The replay script only sends recordings, projected zone outlines, and fault timing to Sensewell.
+Each scenario directory has a `manifest.json` with camera IDs and files, the shared frame rate and duration, floor-plan zones, fixture-only identities, event times, evidence windows, and coverage gaps. Reference annotations are for comparison with footage-derived results. The replay script sends recordings, calibration landmarks and floor zones, and fault timing to Sensewell. See the [ground-position benchmark](warehouse-ground-position.md) for setup, annotations, and results.
 
 - Floor points are in meters on Blender’s ground plane, with +X running from staging toward dispatch and +Y toward the racks. Each zone is a rectangle `[minX, minY, maxX, maxY]`. Each camera’s row-major `floorToImage` matrix multiplies `[X, Y, 1]`. Divide its first two outputs by the third to get normalized image coordinates from the top-left corner.
 - Choreography entries give `[second, [X, Y, liftHeight]]` for each forklift. Interpolate linearly between entries. The F1 and P1 times in `groundTruth` apply across all views. For dwell, 05:04 is the exact five-minute boundary, so a strictly-greater rule can first qualify on the following 10 fps frame at 05:04.100.

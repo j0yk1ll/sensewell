@@ -24,7 +24,7 @@ export function summarizeZoneActivity(
   const rules = new Map<string, RuleTotals>();
 
   for (const frame of frames) {
-    for (const { inside, unknownTrackIds, crossings, gaps, visits, ...subject } of frame.evidence?.rules ?? []) {
+    for (const { inside, positions, unknownTrackIds, crossings, gaps, visits, ...subject } of frame.evidence?.rules ?? []) {
       const key = zoneActivityRuleKey(subject);
       let totals = rules.get(key);
       if (!totals) {
@@ -41,7 +41,7 @@ export function summarizeZoneActivity(
       const { result } = totals;
       result.ruleName = subject.ruleName;
       result.zoneName = subject.zoneName;
-      if (frame === occupancyFrame && inside) result.occupancy = { sourceMs: frame.sourceMs, inside, unknownTrackIds };
+      if (frame === occupancyFrame && inside) result.occupancy = { sourceMs: frame.sourceMs, inside, unknownTrackIds, ...(positions ? { positions } : {}) };
       for (const crossing of crossings) {
         if (crossing.certainty === 'confirmed' && crossing.direction === 'entry') {
           result.entries += 1;

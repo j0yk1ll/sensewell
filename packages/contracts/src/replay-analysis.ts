@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { imagePoint } from './ground-zone.js';
 
 const coordinate = z.number().min(0).max(1);
 
@@ -30,7 +31,10 @@ export const warehouseObjectLabels = {
 
 export type WarehouseObjectType = keyof typeof warehouseObjectLabels;
 export const warehouseObjectType = z.enum(Object.keys(warehouseObjectLabels) as WarehouseObjectType[]);
-export const objectDetection = detectionGeometry.extend({ objectType: warehouseObjectType });
+export const objectDetection = detectionGeometry.extend({
+  objectType: warehouseObjectType,
+  ankles: z.tuple([imagePoint.nullable(), imagePoint.nullable()]).optional(),
+});
 export type ObjectDetection = z.infer<typeof objectDetection>;
 
 export const replayFrameAnalysis = z.discriminatedUnion('state', [

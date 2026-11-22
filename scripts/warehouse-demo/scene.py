@@ -101,6 +101,7 @@ class Warehouse:
         tape_strip.parent = self.carton
         self.rig = next(item for item in self.worker.children if item.type == 'ARMATURE')
         self.setup_carry()
+        self.foot_occluder = cube('Foot occluder', (-7.65, -2.9, .36), (.68, .48, .72), box_material)
 
     def asset(self, filename, instance, location=(0, 0, 0), heading=0):
         before = set(bpy.data.objects)
@@ -158,13 +159,16 @@ class Warehouse:
             pallet.location = Vector(pallet_position(path, second, i == 1)) + Vector((0, 0, .023))
             pallet.rotation_euler.z = math.pi / 2
 
+        ground_position = scenario.get('ground_position', False)
+        visible(self.foot_occluder, ground_position)
         worker_in_scene = not dwell and second < 9.5
         visible(self.worker, worker_in_scene)
         if worker_in_scene:
             # The worker exits through the foreground, clear of the forklift lane.
             forward = min(second, 6.2)
             turn = min(max(second - 6.2, 0), 1)
-            self.worker.location = (-12.6 + 1.22 * forward + .6 * turn, -3.1 - 1.22 * max(second - 6.2, 0), .02)
+            walkway_y = -2.1 if ground_position else -3.1
+            self.worker.location = (-12.6 + 1.22 * forward + .6 * turn, walkway_y - 1.22 * max(second - 6.2, 0), .02)
             self.worker.rotation_euler.z = (1 - turn) * math.pi / 2
             walk_frame = 1 + (second % 1) * FPS
             self.scene.frame_set(int(walk_frame), subframe=walk_frame % 1)

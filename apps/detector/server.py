@@ -9,6 +9,8 @@ import numpy as np
 import onnxruntime as ort
 from PIL import Image
 
+from pose import PersonPose
+
 CLASS_NAMES = [
     "box",
     "cart",
@@ -53,10 +55,20 @@ class Detector:
         if set(ids_by_name) != set(CLASS_NAMES):
             raise ValueError("RF-DETR metadata does not match the warehouse classes")
         self.class_ids = [ids_by_name[name] for name in CLASS_NAMES]
+        self.pose = None
+        pose_path = os.environ.get("PERSON_POSE_MODEL_PATH", "/models/pose_landmarker_full.task")
+        if os.path.isfile(pose_path):
+            try:
+                self.pose = PersonPose(pose_path)
+            except Exception:
+                logging.exception("Person pose unavailable")
+        else:
+            logging.info("Person pose model not found at %s", pose_path)
 
     def detect(self, jpeg):
         with Image.open(io.BytesIO(jpeg), formats=["JPEG"]) as source:
-            image = source.convert("RGB").resize((self.width, self.height), Image.Resampling.BILINEAR)
+            original = source.convert("RGB")
+        image = original.resize((self.width, self.height), Image.Resampling.BILINEAR)
         pixels = (np.asarray(image, dtype=np.float32) * self.pixel_scale - self.mean) / self.std
         tensor = np.ascontiguousarray(pixels.transpose(2, 0, 1)[None])
         boxes, logits = self.session.run(self.outputs, {self.input_name: tensor})
@@ -75,11 +87,17 @@ class Detector:
                 [cx - width / 2, cy - height / 2, cx + width / 2, cy + height / 2], 0, 1,
             )
             if right > left and bottom > top:
-                detections.append({
+                detection = {
                     "objectType": CLASS_NAMES[class_index],
                     "box": [float(x) for x in (left, top, right, bottom)],
                     "confidence": float(score),
-                })
+                }
+                if self.pose and detection["objectType"] == "person":
+                    try:
+                        detection["ankles"] = self.pose.detect_ankles(original, detection["box"])
+                    except Exception:
+                        logging.exception("Ankle estimation failed")
+                detections.append(detection)
         return detections
 
 
@@ -94,7 +112,8 @@ class InferenceServer(ThreadingTCPServer):
             self.detector = Detector(os.environ.get("WAREHOUSE_MODEL_PATH", "/models/warehouse_detector.onnx"))
         except Exception:
             logging.exception("Warehouse detector unavailable")
-        super().__init__((os.environ.get("DETECTOR_HOST", "127.0.0.1"), 8000), InferenceHandler)
+        port = int(os.environ.get("DETECTOR_PORT", "8000"))
+        super().__init__((os.environ.get("DETECTOR_HOST", "127.0.0.1"), port), InferenceHandler)
 
 
 class InferenceHandler(StreamRequestHandler):

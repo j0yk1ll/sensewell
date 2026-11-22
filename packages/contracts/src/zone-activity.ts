@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import { groundDecision } from './ground-zone.js';
 import { cameraZone } from './camera-zone.js';
 import { zoneCrossingDirection } from './zone-entry.js';
 import { objectDetection, warehouseObjectType } from './replay-analysis.js';
 
 const timestamp = z.number().int().nonnegative();
-const sample = z.object({ sourceMs: timestamp, detection: objectDetection, points: cameraZone.shape.points });
+const sample = z.object({ sourceMs: timestamp, detection: objectDetection, points: cameraZone.shape.points, ground: groundDecision.optional() });
 const trackedSample = sample.extend({ trackId: z.number().int().positive() });
 const crossing = z.object({
   trackId: trackedSample.shape.trackId,
@@ -17,7 +18,8 @@ const gap = z.object({
   trackId: trackedSample.shape.trackId,
   startMs: timestamp,
   endMs: timestamp.nullable(),
-  reason: z.enum(['missing', 'recovered', 'ambiguous', 'expired']),
+  observation: sample.optional(),
+  reason: z.enum(['missing', 'recovered', 'ambiguous', 'expired', 'ground-unknown']),
 });
 const visit = z.object({
   trackId: trackedSample.shape.trackId,
@@ -26,7 +28,7 @@ const visit = z.object({
   entry: sample.nullable(),
   exit: sample.nullable(),
   state: z.enum(['open', 'complete', 'partial']),
-  reason: z.enum(['possible-exit', 'ambiguous', 'expired', 'rule-changed', 'pass-ended']).nullable(),
+  reason: z.enum(['possible-exit', 'ground-unknown', 'ambiguous', 'expired', 'rule-changed', 'pass-ended']).nullable(),
 });
 const subject = z.object({
   ruleId: z.string(),
@@ -37,6 +39,7 @@ const subject = z.object({
 
 const ruleFrame = subject.extend({
   inside: z.array(trackedSample).nullable(),
+  positions: z.array(trackedSample).optional(),
   unknownTrackIds: z.array(trackedSample.shape.trackId),
   crossings: z.array(crossing),
   gaps: z.array(gap),
@@ -59,7 +62,7 @@ export const zoneActivity = z.object({
     entries: z.number().int().nonnegative(),
     distinctEntrants: z.number().int().nonnegative(),
     occupancy: z.object({
-      sourceMs: timestamp, inside: z.array(trackedSample), unknownTrackIds: z.array(trackedSample.shape.trackId),
+      sourceMs: timestamp, inside: z.array(trackedSample), positions: z.array(trackedSample).optional(), unknownTrackIds: z.array(trackedSample.shape.trackId),
     }).nullable(),
     crossings: z.array(crossing),
     gaps: z.array(gap),

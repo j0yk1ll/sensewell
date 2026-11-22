@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { formatClipTime } from '@/lib/utils';
 import { cameraApi } from './camera-api';
-import { DetectionBox, ZoneOverlay } from './zone-overlay';
+import { DetectionBox, GroundMarkers, GroundPositionDescription, ZoneOverlay } from './zone-overlay';
 
 function replayPosition(event: ZoneEntryEvent) {
   return `Replay pass ${event.passNumber} · ${formatClipTime(event.sourceMs, true)}`;
@@ -95,9 +95,12 @@ function CrossingEvidence({ id, tenantId, eventId, onClose }: {
               {sourceSize && <>
                 <ZoneOverlay footage={image} sourceSize={sourceSize} zones={[event.zone]} />
                 <DetectionBox box={event.detection.box} />
+                {event.zone.decision && <GroundMarkers decision={event.zone.decision} />}
               </>}
             </div>
-            <figcaption className="mt-1 text-sm text-slate-700">Analyzed crossing frame · {confidence}</figcaption>
+            <figcaption className="mt-1 text-sm text-slate-700">Analyzed crossing frame · {confidence}
+              {event.zone.decision && <> · <GroundPositionDescription decision={event.zone.decision} /></>}
+            </figcaption>
           </figure>
           <EvidenceClip id={id} tenantId={tenantId} eventId={eventId} window={event.window} />
         </div>
